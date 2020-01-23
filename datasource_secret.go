@@ -5,15 +5,18 @@ import (
 	"log"
 	"strconv"
 
-	"github.com/thycotic/tss-sdk-go/server"
 	"github.com/hashicorp/terraform/helper/schema"
+	"github.com/thycotic/tss-sdk-go/server"
 )
 
 func dataSourceSecretRead(d *schema.ResourceData, meta interface{}) error {
-	secrets := server.New(meta.(server.Configuration))
 	id := d.Get("id").(int)
 	field := d.Get("field").(string)
+	secrets, err := server.New(meta.(server.Configuration))
 
+	if err != nil {
+		log.Printf("[DEBUG] configuration error: %s", err)
+	}
 	log.Printf("[DEBUG] getting secret with id %d", id)
 
 	secret, err := secrets.Secret(id)

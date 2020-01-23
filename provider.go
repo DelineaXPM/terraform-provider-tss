@@ -1,15 +1,17 @@
 package main
 
 import (
-	"github.com/thycotic/tss-sdk-go/server"
 	"github.com/hashicorp/terraform/helper/schema"
+	"github.com/thycotic/tss-sdk-go/server"
 )
 
 func providerConfig(d *schema.ResourceData) (interface{}, error) {
 	return server.Configuration{
 		ServerURL: d.Get("server_url").(string),
-		Username:  d.Get("username").(string),
-		Password:  d.Get("password").(string),
+		Credentials: server.UserCredential{
+			Username: d.Get("username").(string),
+			Password: d.Get("password").(string),
+		},
 	}, nil
 }
 
