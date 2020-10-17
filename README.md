@@ -48,7 +48,7 @@ Terraform 0.13 uses a different file system layout for 3rd party providers. More
 
 For Terraform 0.13+, include the `terraform` block in your configuration or plan to that specifies the provider:
 
-```json
+```terraform
 terraform {
     required_version = ">= 0.13.0"
     required_providers {
