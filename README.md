@@ -6,8 +6,6 @@ The [Thycotic](https://thycotic.com/) [Secret Server](https://thycotic.com/produ
 
 The latest release can be downloaded from [here](https://github.com/thycotic/terraform-provider-tss/releases/latest).
 
-> **Note:** 3rd-party providers are installed differently in Terraform 0.13.
-
 ### Terraform 0.12 and earlier
 
 Extract the specific file for your OS and Architecture to the plugins directory
