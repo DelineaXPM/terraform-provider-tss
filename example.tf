@@ -1,4 +1,5 @@
 terraform {
+  required_version = ">= 0.12.20"
   required_providers {
     tss = {
       source  = "terraform.thycotic.com/thycotic/tss"
