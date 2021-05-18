@@ -2,9 +2,15 @@
 
 The [Thycotic](https://thycotic.com/) [Secret Server](https://thycotic.com/products/secret-server/) [Terraform](https://www.terraform.io/) Provider allows you to access and reference Secrets in your vault for use in Terraform configurations.
 
-## Installation
+## Install via Registry
 
-The latest release can be downloaded from [here](https://github.com/thycotic/terraform-provider-tss/releases/latest).
+> Preferred way to install
+
+The latest release can be [downloaded from the terraform registry](https://registry.terraform.io/providers/thycotic/tss/latest). The documentation can be found [here](https://registry.terraform.io/providers/thycotic/tss/latest/docs).
+
+If wish to install straight from source, follow the steps below.
+
+## Install form Source
 
 ### Terraform 0.12 and earlier
 
@@ -27,7 +33,7 @@ Terraform 0.13 uses a different file system layout for 3rd party providers. More
 └───terraform.thycotic.com
     └───thycotic
         └───tss
-            └───1.0.0
+            └───1.0.2
                 └───windows_amd64
 ```
 
@@ -38,22 +44,22 @@ Terraform 0.13 uses a different file system layout for 3rd party providers. More
 └───terraform.thycotic.com
     └───thycotic
         └───tss
-            └───1.0.0
+            └───1.0.2
                 ├───linux_amd64
 ```
 
 ## Usage
 
-For Terraform 0.13+, include the `terraform` block in your configuration or plan to that specifies the provider:
+For Terraform 0.13+, include the `terraform` block in your configuration, or plan, that specifies the provider:
 
 ```terraform
 terraform {
-    required_providers {
-        tss = {
-            source = "terraform.thycotic.com/thycotic/tss"
-            version = "~> 1.0"
-        }
+  required_providers {
+    tss = {
+      source = "thycotic/tss"
+      version = "1.0.2"
     }
+  }
 }
 ```
 
