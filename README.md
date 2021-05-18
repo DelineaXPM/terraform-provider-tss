@@ -8,7 +8,7 @@ The [Thycotic](https://thycotic.com/) [Secret Server](https://thycotic.com/produ
 
 The latest release can be [downloaded from the terraform registry](https://registry.terraform.io/providers/thycotic/tss/latest). The documentation can be found [here](https://registry.terraform.io/providers/thycotic/tss/latest/docs).
 
-If you are installing straight from source, follow the steps below.
+If wish to install straight from source, follow the steps below.
 
 ## Install form Source
 
