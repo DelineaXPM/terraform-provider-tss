@@ -16,12 +16,12 @@ For Terraform 0.13+, include the `terraform` block in your configuration or plan
 
 ```terraform
 terraform {
-    required_providers {
-        tss = {
-            source = "terraform.thycotic.com/thycotic/tss"
-            version = "~> 1.0"
-        }
+  required_providers {
+    tss = {
+      source = "thycotic/tss"
+      version = "1.0.2"
     }
+  }
 }
 ```
 
