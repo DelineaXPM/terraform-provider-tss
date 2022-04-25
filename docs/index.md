@@ -34,6 +34,21 @@ tss_server_url = "https://localhost/SecretServer"
 tss_secret_id  = "1"
 ```
 
+# Environment variables
+
+You can provide your credentials via the TSS_SERVER_URL, TSS_USERNAME and TSS_PASSWORD environment variables.
+In this case, tss provider could be represented like this 
+```
+provider "tss" {}
+```
+Usage
+```
+$ export TSS_USERNAME="my_app_user"
+$ export TSS_PASSWORD="Passw0rd."
+$ export TSS_SERVER_URL="https://localhost/SecretServer"
+$ terraform plan
+```
+
 ### Required
 
 - **password** (String) The password of the Secret Server User

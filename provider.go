@@ -25,16 +25,19 @@ func Provider() *schema.Provider {
 			"server_url": {
 				Type:        schema.TypeString,
 				Required:    true,
+				DefaultFunc: schema.EnvDefaultFunc("TSS_SERVER_URL", nil),
 				Description: "The Secret Server base URL e.g. https://localhost/SecretServer",
 			},
 			"username": {
 				Type:        schema.TypeString,
 				Required:    true,
+				DefaultFunc: schema.EnvDefaultFunc("TSS_USERNAME", nil),
 				Description: "The username of the Secret Server User to connect as",
 			},
 			"password": {
 				Type:        schema.TypeString,
 				Required:    true,
+				DefaultFunc: schema.EnvDefaultFunc("TSS_PASSWORD", nil),
 				Description: "The password of the Secret Server User",
 			},
 		},
