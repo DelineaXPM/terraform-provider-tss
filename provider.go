@@ -25,7 +25,7 @@ func Provider() *schema.Provider {
 			"server_url": {
 				Type:        schema.TypeString,
 				Required:    true,
-				DefaultFunc: schema.EnvDefaultFunc("TSS_SERVER", nil),
+				DefaultFunc: schema.EnvDefaultFunc("TSS_SERVER_URL", nil),
 				Description: "The Secret Server base URL e.g. https://localhost/SecretServer",
 			},
 			"username": {
