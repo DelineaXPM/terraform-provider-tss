@@ -65,7 +65,7 @@ terraform {
 
 To run the example, create a `terraform.tfvars`:
 
-```json
+```text
 tss_username   = "my_app_user"
 tss_password   = "Passw0rd."
 tss_server_url = "https://example/SecretServer"
