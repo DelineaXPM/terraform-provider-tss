@@ -2,7 +2,7 @@ module github.com/thycotic/terraform-provider-tss
 
 require (
 	github.com/hashicorp/go-getter v1.5.11 // indirect
-	github.com/hashicorp/terraform v0.12.14
+	github.com/hashicorp/terraform v0.12.17
 	github.com/thycotic/tss-sdk-go v1.0.0
 )
 
