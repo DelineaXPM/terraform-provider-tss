@@ -1,12 +1,12 @@
-# Thycotic Secret Server - Terraform Provider
+# Delinea Secret Server - Terraform Provider
 
-The [Thycotic](https://thycotic.com/) [Secret Server](https://thycotic.com/products/secret-server/) [Terraform](https://www.terraform.io/) Provider allows you to access and reference Secrets in your vault for use in Terraform configurations.
+The [Delinea](https://delinea.com/) [Secret Server](https://delinea.com/products/secret-server/) [Terraform](https://www.terraform.io/) Provider allows you to access and reference Secrets in your vault for use in Terraform configurations.
 
 ## Install via Registry
 
 > Preferred way to install
 
-The latest release can be [downloaded from the terraform registry](https://registry.terraform.io/providers/thycotic/tss/latest). The documentation can be found [here](https://registry.terraform.io/providers/thycotic/tss/latest/docs).
+The latest release can be [downloaded from the terraform registry](https://registry.terraform.io/providers/DelineaXPM/tss/latest). The documentation can be found [here](https://registry.terraform.io/providers/DelineaXPM/tss/latest/docs).
 
 If wish to install straight from source, follow the steps below.
 
@@ -30,8 +30,8 @@ Terraform 0.13 uses a different file system layout for 3rd party providers. More
 
 ```text
 %APPDATA%\TERRAFORM.D\PLUGINS
-└───terraform.thycotic.com
-    └───thycotic
+└───terraform.delinea.com
+    delinea
         └───tss
             └───1.0.2
                 └───windows_amd64
@@ -41,8 +41,8 @@ Terraform 0.13 uses a different file system layout for 3rd party providers. More
 
 ```text
 ~/.terraform.d/plugins
-└───terraform.thycotic.com
-    └───thycotic
+└───terraform.delinea.com
+    delinea
         └───tss
             └───1.0.2
                 ├───linux_amd64
@@ -56,8 +56,8 @@ For Terraform 0.13+, include the `terraform` block in your configuration, or pla
 terraform {
   required_providers {
     tss = {
-      source = "thycotic/tss"
-      version = "1.0.2"
+      source = "delinea/tss"
+      version = "~> 1.0"
     }
   }
 }
