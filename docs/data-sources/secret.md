@@ -12,9 +12,11 @@ This resource can read a secret from the Secret Server
 
 ### Required
 
-- **field** (String) the field to extract from the secret
-- **id** (Number) the id of the secret
+- `field` (String) the field to extract from the secret
+- `id` (Number) the id of the secret
 
 ### Read-Only
 
-- **value** (String, Sensitive) the value of the field of the secret
+- `value` (String, Sensitive) the value of the field of the secret
+
+
