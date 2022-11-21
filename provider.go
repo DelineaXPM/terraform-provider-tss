@@ -2,7 +2,7 @@ package main
 
 import (
 	"github.com/DelineaXPM/tss-sdk-go/v2/server"
-	"github.com/hashicorp/terraform/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
 func providerConfig(d *schema.ResourceData) (interface{}, error) {
