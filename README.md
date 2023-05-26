@@ -12,16 +12,6 @@ If wish to install straight from source, follow the steps below.
 
 ## Install form Source
 
-### Terraform 0.12 and earlier
-
-Extract the specific file for your OS and Architecture to the plugins directory
-of the user's profile. You may have to create the directory.
-
-| OS      | Default Path                    |
-| ------- | ------------------------------- |
-| Linux   | `~/.terraform.d/plugins`        |
-| Windows | `%APPDATA%\terraform.d\plugins` |
-
 ### Terraform 0.13 and later
 
 Terraform 0.13 uses a different file system layout for 3rd party providers. More information on this can be found [here](https://www.terraform.io/upgrade-guides/0-13.html#new-filesystem-layout-for-local-copies-of-providers). The following folder path will need to be created in the plugins directory of the user's profile.
