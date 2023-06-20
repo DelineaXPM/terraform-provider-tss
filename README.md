@@ -31,9 +31,9 @@ Terraform 0.13 uses a different file system layout for 3rd party providers. More
 ```text
 %APPDATA%\TERRAFORM.D\PLUGINS
 └───terraform.delinea.com
-    delinea
+    DelineaXPM
         └───tss
-            └───1.0.2
+            └───2.0.1
                 └───windows_amd64
 ```
 
@@ -42,9 +42,9 @@ Terraform 0.13 uses a different file system layout for 3rd party providers. More
 ```text
 ~/.terraform.d/plugins
 └───terraform.delinea.com
-    delinea
+    DelineaXPM
         └───tss
-            └───1.0.2
+            └───2.0.1
                 ├───linux_amd64
 ```
 
@@ -56,8 +56,8 @@ For Terraform 0.13+, include the `terraform` block in your configuration, or pla
 terraform {
   required_providers {
     tss = {
-      source = "delinea/tss"
-      version = "~> 1.0"
+      source = "DelineaXPM/tss"
+      version = "~> 2.0"
     }
   }
 }

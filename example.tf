@@ -2,8 +2,8 @@ terraform {
   required_version = ">= 0.12.20"
   required_providers {
     tss = {
-      source  = "delinea/tss"
-      version = "1.0.2"
+      source = "DelineaXPM/tss"
+      version = "2.0.1"
     }
   }
 }
