@@ -19,7 +19,8 @@ func providerConfig(d *schema.ResourceData) (interface{}, error) {
 func Provider() *schema.Provider {
 	return &schema.Provider{
 		DataSourcesMap: map[string]*schema.Resource{
-			"tss_secret": dataSourceSecret(),
+			"tss_secret":          dataSourceSecret(),
+			"tss_secret_template": dataSourceSecretTemplate(),
 		},
 		Schema: map[string]*schema.Schema{
 			"server_url": {
