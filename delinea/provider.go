@@ -1,4 +1,4 @@
-package main
+package delinea
 
 import (
 	"github.com/DelineaXPM/tss-sdk-go/v2/server"
