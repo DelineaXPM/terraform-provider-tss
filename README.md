@@ -53,7 +53,9 @@ terraform {
 }
 ```
 
-To run the example, create a `terraform.tfvars`:
+To run the example, create a `terraform.tfvars` and use below variables to get and create/update secret:
+
+Get Secret By ID:
 
 ```hcl
 tss_username   = "my_app_user"
@@ -61,6 +63,41 @@ tss_password   = "Passw0rd."
 tss_server_url = "https://example/SecretServer"
 tss_secret_id  = "1"
 ```
+Create/Update Secret:
+
+```hcl
+tss_username   = "my_app_user"
+tss_password   = "Passw0rd."
+tss_server_url = "https://example/SecretServer"
+tss_secret_name = "Windows Account"
+tss_secret_siteid = 1
+tss_secret_folderid = 0
+tss_secret_templateid = 6003
+fields = [
+  {
+    fieldname   = "Machine"
+    itemvalue = "0.0.0.0"
+  },
+  {
+    fieldname   = "Username"
+    itemvalue = "my_app_user"
+  },
+  {
+    fieldname   = "Password"
+    itemvalue = "Passw0rd."
+  },
+  {
+    fieldname   = "Notes"
+    itemvalue = ""
+  }
+]
+```
+Above Create/Update Secret variables are for Windows Account secret template of secret server. To create variables to support different secret template refer below steps
+
+1. Open secret templete in secret server Admin => Secret Templates
+2. Click on Fields tab
+3. Based on template fields add/update field (with field name and item value) in fields array as above example
+
 ## Environment variables
 
 You can provide your credentials via the TSS_SERVER_URL, TSS_USERNAME and TSS_PASSWORD environment variables.
