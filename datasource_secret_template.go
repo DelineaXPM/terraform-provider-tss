@@ -30,18 +30,18 @@ func dataSourceSecretTemplateRead(d *schema.ResourceData, meta interface{}) erro
 	var flattenedFields []map[string]interface{}
 	for _, field := range template.Fields {
 		flattenedFields = append(flattenedFields, map[string]interface{}{
-			"secret_template_field_id": field.SecretTemplateFieldID,
-			"field_slug_name":          field.FieldSlugName,
-			"display_name":             field.DisplayName,
-			"description":              field.Description,
-			"name":                     field.Name,
-			"list_type":                field.ListType,
-			"is_file":                  field.IsFile,
-			"is_list":                  field.IsList,
-			"is_notes":                 field.IsNotes,
-			"is_password":              field.IsPassword,
-			"is_required":              field.IsRequired,
-			"is_url":                   field.IsUrl,
+			"secrettemplatefieldid": field.SecretTemplateFieldID,
+			"fieldslugname":         field.FieldSlugName,
+			"displayname":           field.DisplayName,
+			"description":           field.Description,
+			"name":                  field.Name,
+			"listtype":              field.ListType,
+			"isfile":                field.IsFile,
+			"islist":                field.IsList,
+			"isnotes":               field.IsNotes,
+			"ispassword":            field.IsPassword,
+			"isrequired":            field.IsRequired,
+			"isurl":                 field.IsUrl,
 		})
 	}
 
@@ -60,15 +60,15 @@ func dataSourceSecretTemplate() *schema.Resource {
 				Type:        schema.TypeList,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"secret_template_field_id": {
+						"secrettemplatefieldid": {
 							Type:     schema.TypeInt,
 							Computed: true,
 						},
-						"field_slug_name": {
+						"fieldslugname": {
 							Type:     schema.TypeString,
 							Computed: true,
 						},
-						"display_name": {
+						"displayname": {
 							Type:     schema.TypeString,
 							Computed: true,
 						},
@@ -80,31 +80,31 @@ func dataSourceSecretTemplate() *schema.Resource {
 							Type:     schema.TypeString,
 							Computed: true,
 						},
-						"list_type": {
+						"listtype": {
 							Type:     schema.TypeString,
 							Computed: true,
 						},
-						"is_file": {
+						"isfile": {
 							Type:     schema.TypeBool,
 							Computed: true,
 						},
-						"is_list": {
+						"islist": {
 							Type:     schema.TypeBool,
 							Computed: true,
 						},
-						"is_notes": {
+						"isnotes": {
 							Type:     schema.TypeBool,
 							Computed: true,
 						},
-						"is_password": {
+						"ispassword": {
 							Type:     schema.TypeBool,
 							Computed: true,
 						},
-						"is_required": {
+						"isrequired": {
 							Type:     schema.TypeBool,
 							Computed: true,
 						},
-						"is_url": {
+						"isurl": {
 							Type:     schema.TypeBool,
 							Computed: true,
 						},

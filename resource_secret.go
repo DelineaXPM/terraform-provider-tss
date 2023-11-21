@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 
 	"github.com/DelineaXPM/tss-sdk-go/v2/server"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
@@ -81,7 +82,7 @@ func dataSourceSecretUpdate(d *schema.ResourceData, meta interface{}) error {
 
 	refSecret := new(server.Secret)
 	refSecret.ID = id
-	err = getSecretData(d, refSecret)
+	err = getSecretData(d, refSecret, secrets)
 	if err != nil {
 		return err
 	}
@@ -94,11 +95,6 @@ func dataSourceSecretUpdate(d *schema.ResourceData, meta interface{}) error {
 	if sc == nil {
 		log.Printf("updated secret data is nil")
 		return nil
-	}
-
-	if err != nil {
-		log.Printf("[DEBUG] unable to get secret: %s", err)
-		return err
 	}
 
 	log.Printf("Secret is Updated successfully...!")
@@ -116,7 +112,7 @@ func dataSourceSecretCreate(d *schema.ResourceData, meta interface{}) error {
 
 	refSecret := new(server.Secret)
 
-	err = getSecretData(d, refSecret)
+	err = getSecretData(d, refSecret, secrets)
 	if err != nil {
 		return err
 	}
@@ -133,11 +129,6 @@ func dataSourceSecretCreate(d *schema.ResourceData, meta interface{}) error {
 		return nil
 	}
 
-	if err != nil {
-		log.Printf("[DEBUG] unable to get secret: %s", err)
-		return err
-	}
-
 	log.Printf("Secret is Created successfully...!")
 
 	d.SetId(strconv.Itoa(sc.ID))
@@ -145,35 +136,130 @@ func dataSourceSecretCreate(d *schema.ResourceData, meta interface{}) error {
 	return dataSourceSecretReadNew(d, meta)
 }
 
-func getSecretData(d *schema.ResourceData, object *server.Secret) error {
-	folderId := d.Get("folder_id").(int)
-	siteId := d.Get("siteid").(int)
-	secretTemplateId := d.Get("secret_template_id").(int)
-	name := d.Get("name").(string)
+func getSecretData(d *schema.ResourceData, object *server.Secret, secrets *server.Server) error {
+	// folderId := d.Get("folderid").(int)
+	// siteId := d.Get("siteid").(int)
+	// secretTemplateId := d.Get("secrettemplateid").(int)
+	// name := d.Get("name").(string)
 
-	fields := []server.SecretField{}
+	//fields := []server.SecretField{}
+	object.Name = d.Get("name").(string)
+	object.SiteID = d.Get("siteid").(int)
+	object.FolderID = d.Get("folderid").(int)
+	object.SecretTemplateID = d.Get("secrettemplateid").(int)
+
+	template, err := secrets.SecretTemplate(object.SecretTemplateID)
+
+	if err != nil {
+		log.Print("[DEBUG] unable to get secret template", err)
+		return err
+	}
+
 	if d.Get("fields") != nil {
-		for _, p := range d.Get("fields").([]interface{}) {
+		fields := d.Get("fields").([]interface{})
+		//object.Fields = make([]server.SecretField, len(fields))
+
+		for _, p := range fields {
 			field := server.SecretField{}
-			field.FieldID = p.(map[string]interface{})["field_id"].(int)
-			field.ItemValue = p.(map[string]interface{})["item_value"].(string)
-			fields = append(fields, field)
+			templateField := server.SecretTemplateField{}
+			fieldName := ""
+			if value, ok := p.(map[string]interface{})["fieldname"]; ok && value != nil {
+				fieldName = value.(string)
+			}
+
+			for _, record := range template.Fields {
+				if strings.ToLower(record.Name) == strings.ToLower(fieldName) || strings.ToLower(record.FieldSlugName) == strings.ToLower(fieldName) {
+					templateField = record
+				}
+			}
+
+			field.FieldDescription = templateField.Description
+			field.FieldID = templateField.SecretTemplateFieldID
+			field.FieldName = templateField.Name
+			if value, ok := p.(map[string]interface{})["fileattachmentid"]; ok && value != nil {
+				field.FileAttachmentID = value.(int)
+			}
+			if value, ok := p.(map[string]interface{})["filename"]; ok && value != nil {
+				field.Filename = value.(string)
+			}
+			field.IsFile = templateField.IsFile
+			//field.IsList = templateField.IsList
+			field.IsNotes = templateField.IsNotes
+			field.IsPassword = templateField.IsPassword
+			if value, ok := p.(map[string]interface{})["itemvalue"]; ok && value != nil {
+				field.ItemValue = value.(string)
+			}
+			//field.ListType = templateField.ListType
+			field.Slug = templateField.FieldSlugName
+
+			object.Fields = append(object.Fields, field)
 		}
 	}
 
-	object.Name = name
-	object.SiteID = siteId
-	object.FolderID = folderId
-	object.SecretTemplateID = secretTemplateId
-	object.Fields = make([]server.SecretField, len(fields))
-	object.Fields[0].FieldID = fields[0].FieldID
-	object.Fields[0].ItemValue = fields[0].ItemValue
-	object.Fields[1].FieldID = fields[1].FieldID
-	object.Fields[1].ItemValue = fields[1].ItemValue
-	object.Fields[2].FieldID = fields[2].FieldID
-	object.Fields[2].ItemValue = fields[2].ItemValue
-	object.Fields[3].FieldID = fields[3].FieldID
-	object.Fields[3].ItemValue = fields[3].ItemValue
+	// object.Name = name
+	// object.SiteID = siteId
+	// object.FolderID = folderId
+	// object.SecretTemplateID = secretTemplateId
+	// object.Fields = make([]server.SecretField, len(fields))
+	// object.Fields[0].FieldID = fields[0].FieldID
+	// object.Fields[0].ItemValue = fields[0].ItemValue
+	// object.Fields[1].FieldID = fields[1].FieldID
+	// object.Fields[1].ItemValue = fields[1].ItemValue
+	// object.Fields[2].FieldID = fields[2].FieldID
+	// object.Fields[2].ItemValue = fields[2].ItemValue
+	// object.Fields[3].FieldID = fields[3].FieldID
+	// object.Fields[3].ItemValue = fields[3].ItemValue
+
+	if value := d.Get("secretpolicyid"); value != nil {
+		object.SecretPolicyID = value.(int)
+	}
+	if value := d.Get("passwordtypewebscriptid"); value != nil {
+		object.PasswordTypeWebScriptID = value.(int)
+	}
+	if value := d.Get("launcherconnectassecretid"); value != nil {
+		object.LauncherConnectAsSecretID = value.(int)
+	}
+	if value := d.Get("checkoutintervalminutes"); value != nil {
+		object.CheckOutIntervalMinutes = value.(int)
+	}
+	if value := d.Get("active"); value != nil {
+		object.Active = value.(bool)
+	} else {
+		object.Active = true
+	}
+	if value := d.Get("checkedout"); value != nil {
+		object.CheckedOut = value.(bool)
+	}
+	if value := d.Get("checkoutenabled"); value != nil {
+		object.CheckOutEnabled = value.(bool)
+	}
+	if value := d.Get("autochangenabled"); value != nil {
+		object.AutoChangeEnabled = value.(bool)
+	}
+	if value := d.Get("checkoutchangepasswordenabled"); value != nil {
+		object.CheckOutChangePasswordEnabled = value.(bool)
+	}
+	if value := d.Get("delayindexing"); value != nil {
+		object.DelayIndexing = value.(bool)
+	}
+	if value := d.Get("enableinheritpermissions"); value != nil {
+		object.EnableInheritPermissions = value.(bool)
+	}
+	if value := d.Get("enableinheritsecretpolicy"); value != nil {
+		object.EnableInheritSecretPolicy = value.(bool)
+	}
+	if value := d.Get("proxyenabled"); value != nil {
+		object.ProxyEnabled = value.(bool)
+	}
+	if value := d.Get("requirescomment"); value != nil {
+		object.RequiresComment = value.(bool)
+	}
+	if value := d.Get("sessionrecordingenabled"); value != nil {
+		object.SessionRecordingEnabled = value.(bool)
+	}
+	if value := d.Get("weblauncherrequiresincognitomode"); value != nil {
+		object.WebLauncherRequiresIncognitoMode = value.(bool)
+	}
 
 	return nil
 }
@@ -185,7 +271,7 @@ func getSecretSchema() map[string]*schema.Schema {
 			Required:    true,
 			Type:        schema.TypeString,
 		},
-		"folder_id": {
+		"folderid": {
 			Description: "the foleder id of the secret",
 			Required:    true,
 			Type:        schema.TypeInt,
@@ -195,28 +281,28 @@ func getSecretSchema() map[string]*schema.Schema {
 			Required:    true,
 			Type:        schema.TypeInt,
 		},
-		"secret_template_id": {
+		"secrettemplateid": {
 			Description: "the id of the template in which secret will create",
 			Required:    true,
 			Type:        schema.TypeInt,
 			ForceNew:    true,
 		},
-		"secret_policy_id": {
+		"secretpolicyid": {
 			Description: "the id of the secret policy",
 			Optional:    true,
 			Type:        schema.TypeInt,
 		},
-		"password_type_web_script_id": {
+		"passwordtypewebscriptid": {
 			Description: "the id of the password type webscript",
 			Optional:    true,
 			Type:        schema.TypeInt,
 		},
-		"launcher_connect_as_secretid": {
+		"launcherconnectassecretid": {
 			Description: "the id of the launcher connect as secret",
 			Optional:    true,
 			Type:        schema.TypeInt,
 		},
-		"checkout_interval_minutes": {
+		"checkoutintervalminutes": {
 			Description: "the secret checkout interval minutes",
 			Optional:    true,
 			Type:        schema.TypeInt,
@@ -231,52 +317,52 @@ func getSecretSchema() map[string]*schema.Schema {
 			Optional:    true,
 			Type:        schema.TypeBool,
 		},
-		"checkout_enabled": {
+		"checkoutenabled": {
 			Description: "the secret checkout enabled or disabled",
 			Optional:    true,
 			Type:        schema.TypeBool,
 		},
-		"auto_change_enabled": {
+		"autochangenabled": {
 			Description: "the autochange is enabled or disabled",
 			Optional:    true,
 			Type:        schema.TypeBool,
 		},
-		"checkout_change_password_enabled": {
+		"checkoutchangepasswordenabled": {
 			Description: "the checkout change password enabled or disabled",
 			Optional:    true,
 			Type:        schema.TypeBool,
 		},
-		"delay_indexing": {
+		"delayindexing": {
 			Description: "the delay indexing is enabled or disabled",
 			Optional:    true,
 			Type:        schema.TypeBool,
 		},
-		"enable_inherit_permissions": {
+		"enableinheritpermissions": {
 			Description: "the inherit permission is enabled or disabled",
 			Optional:    true,
 			Type:        schema.TypeBool,
 		},
-		"enable_inherit_secret_policy": {
+		"enableinheritsecretpolicy": {
 			Description: "the inherit secret policy is enabled or disabled",
 			Optional:    true,
 			Type:        schema.TypeBool,
 		},
-		"proxy_enabled": {
+		"proxyenabled": {
 			Description: "the proxy enabled or disabled",
 			Optional:    true,
 			Type:        schema.TypeBool,
 		},
-		"requires_comment": {
+		"requirescomment": {
 			Description: "the comment is required or not",
 			Optional:    true,
 			Type:        schema.TypeBool,
 		},
-		"session_recording_enabled": {
+		"sessionrecordingenabled": {
 			Description: "the session recording is enabled or disabled",
 			Optional:    true,
 			Type:        schema.TypeBool,
 		},
-		"web_launcher_requires_incognito_mode": {
+		"weblauncherrequiresincognitomode": {
 			Description: "the secret requires web launcher encognito mode or not",
 			Optional:    true,
 			Type:        schema.TypeBool,
@@ -287,28 +373,68 @@ func getSecretSchema() map[string]*schema.Schema {
 			Type:        schema.TypeList,
 			Elem: &schema.Resource{
 				Schema: map[string]*schema.Schema{
-					"field_id": {
+					"fieldid": {
 						Type:     schema.TypeInt,
-						Required: true,
+						Optional: true,
 					},
-					"item_value": {
+					"fileattachmentid": {
+						Type:     schema.TypeInt,
+						Optional: true,
+					},
+					"fieldname": {
 						Type:     schema.TypeString,
 						Required: true,
+					},
+					"slug": {
+						Type:     schema.TypeString,
+						Optional: true,
+					},
+					"fielddescription": {
+						Type:     schema.TypeString,
+						Optional: true,
+					},
+					"filename": {
+						Type:     schema.TypeString,
+						Optional: true,
+					},
+					"itemvalue": {
+						Type:     schema.TypeString,
+						Optional: true,
+					},
+					"isfile": {
+						Type:     schema.TypeBool,
+						Optional: true,
+					},
+					"isnotes": {
+						Type:     schema.TypeBool,
+						Optional: true,
+					},
+					"ispassword": {
+						Type:     schema.TypeBool,
+						Optional: true,
+					},
+					"islist": {
+						Type:     schema.TypeBool,
+						Optional: true,
+					},
+					"listtype": {
+						Type:     schema.TypeString,
+						Optional: true,
 					},
 				},
 			},
 		},
-		"ssh_key_args": {
+		"sshkeyargs": {
 			Description: "the ssh key arguments of the secret",
 			Optional:    true,
 			Type:        schema.TypeSet,
 			Elem: &schema.Resource{
 				Schema: map[string]*schema.Schema{
-					"generate_passphrase": {
+					"generatepassphrase": {
 						Type:     schema.TypeBool,
 						Required: true,
 					},
-					"generate_ssh_key": {
+					"generatesshkey": {
 						Type:     schema.TypeBool,
 						Required: true,
 					},

@@ -2,7 +2,7 @@ terraform {
   required_version = "1.6.3"
   required_providers {
     tss = {
-      source = "terraform.delinea.com/delinea/tss"
+      source = "DelineaXPM/tss"
       version = "2.0.2"
     }
   }
@@ -38,8 +38,8 @@ variable "tss_secret_templateid" {
 
 variable "fields" {
   type = list(object({
-    field_id   = number
-    item_value = string
+    itemvalue = string
+	  fieldname = string
   }))
 }
 
@@ -50,17 +50,17 @@ provider "tss" {
 }
 
 
-resource "tss_secret" "secret_name" {
+resource "tss_resource_secret" "secret_name" {
   name = var.tss_secret_name
-  folder_id = var.tss_secret_folderid
+  folderid = var.tss_secret_folderid
   siteid = var.tss_secret_siteid
-  secret_template_id = var.tss_secret_templateid
+  secrettemplateid = var.tss_secret_templateid
   active = true
   dynamic "fields" {
     for_each = var.fields
     content {
-      field_id   = fields.value.field_id
-      item_value = fields.value.item_value
+      fieldname   = fields.value.fieldname
+      itemvalue = fields.value.itemvalue
     }
   }
 }

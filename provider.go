@@ -43,7 +43,7 @@ func Provider() *schema.Provider {
 			},
 		},
 		ResourcesMap: map[string]*schema.Resource{
-			"tss_secret": resourceSecret(),
+			"tss_resource_secret": resourceSecret(),
 		},
 		ConfigureFunc: providerConfig,
 	}
