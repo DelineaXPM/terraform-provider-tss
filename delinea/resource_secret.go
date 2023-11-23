@@ -10,28 +10,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
-// type Secret struct {
-// 	Name                                                                       string
-// 	FolderID, ID, SiteID, SecretTemplateID                                     int
-// 	SecretPolicyID, PasswordTypeWebScriptID                                    int `json:",omitempty"`
-// 	LauncherConnectAsSecretID, CheckOutIntervalMinutes                         int
-// 	Active, CheckedOut, CheckOutEnabled                                        bool
-// 	AutoChangeEnabled, CheckOutChangePasswordEnabled, DelayIndexing            bool
-// 	EnableInheritPermissions, EnableInheritSecretPolicy, ProxyEnabled          bool
-// 	RequiresComment, SessionRecordingEnabled, WebLauncherRequiresIncognitoMode bool
-// 	Fields                                                                     []SecretField `json:"Items"`
-// 	SshKeyArgs                                                                 *SshKeyArgs   `json:",omitempty"`
-// }
-
-// type SecretField struct {
-// 	FieldID   int
-// 	ItemValue string
-// }
-
-// type SshKeyArgs struct {
-// 	GeneratePassphrase, GenerateSshKeys bool
-// }
-
 func resourceSecret() *schema.Resource {
 	return &schema.Resource{
 		Create: dataSourceSecretCreate,
@@ -137,12 +115,6 @@ func dataSourceSecretCreate(d *schema.ResourceData, meta interface{}) error {
 }
 
 func getSecretData(d *schema.ResourceData, object *server.Secret, secrets *server.Server) error {
-	// folderId := d.Get("folderid").(int)
-	// siteId := d.Get("siteid").(int)
-	// secretTemplateId := d.Get("secrettemplateid").(int)
-	// name := d.Get("name").(string)
-
-	//fields := []server.SecretField{}
 	object.Name = d.Get("name").(string)
 	object.SiteID = d.Get("siteid").(int)
 	object.FolderID = d.Get("folderid").(int)
@@ -157,7 +129,6 @@ func getSecretData(d *schema.ResourceData, object *server.Secret, secrets *serve
 
 	if d.Get("fields") != nil {
 		fields := d.Get("fields").([]interface{})
-		//object.Fields = make([]server.SecretField, len(fields))
 
 		for _, p := range fields {
 			field := server.SecretField{}
@@ -195,20 +166,6 @@ func getSecretData(d *schema.ResourceData, object *server.Secret, secrets *serve
 			object.Fields = append(object.Fields, field)
 		}
 	}
-
-	// object.Name = name
-	// object.SiteID = siteId
-	// object.FolderID = folderId
-	// object.SecretTemplateID = secretTemplateId
-	// object.Fields = make([]server.SecretField, len(fields))
-	// object.Fields[0].FieldID = fields[0].FieldID
-	// object.Fields[0].ItemValue = fields[0].ItemValue
-	// object.Fields[1].FieldID = fields[1].FieldID
-	// object.Fields[1].ItemValue = fields[1].ItemValue
-	// object.Fields[2].FieldID = fields[2].FieldID
-	// object.Fields[2].ItemValue = fields[2].ItemValue
-	// object.Fields[3].FieldID = fields[3].FieldID
-	// object.Fields[3].ItemValue = fields[3].ItemValue
 
 	if value := d.Get("secretpolicyid"); value != nil {
 		object.SecretPolicyID = value.(int)

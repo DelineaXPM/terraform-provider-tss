@@ -41,6 +41,9 @@ func Provider() *schema.Provider {
 				Description: "The password of the Secret Server User",
 			},
 		},
+		ResourcesMap: map[string]*schema.Resource{
+			"tss_resource_secret": resourceSecret(),
+		},
 		ConfigureFunc: providerConfig,
 	}
 }
