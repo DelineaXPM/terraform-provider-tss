@@ -76,7 +76,7 @@ tss_secret_templateid = 6003
 fields = [
   {
     fieldname   = "Machine"
-    itemvalue = "0.0.0.0"
+    itemvalue = "hostname/ip"
   },
   {
     fieldname   = "Username"
@@ -95,8 +95,10 @@ fields = [
 Above Create/Update Secret variables are for Windows Account secret template of secret server. To create variables to support different secret template refer below steps
 
 1. Open secret templete in secret server Admin => Secret Templates
-2. Click on Fields tab
-3. Based on template fields add/update field (with field name and item value) in fields array as above example
+2. Replace tss_secret_templateid value with the teplate id which can be see in the URL when user click on any template in secret server.
+3. Click on Fields tab
+4. Based on template fields add/update field (with field name and item value) in fields array as above example. In above example there are four fields but in other template
+ there might be more/less flieds. Accordingly, add/remove field entry from the fields array.
 
 ## Environment variables
 
