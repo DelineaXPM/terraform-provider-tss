@@ -1,4 +1,4 @@
-package main
+package delinea
 
 import (
 	"github.com/DelineaXPM/tss-sdk-go/v2/server"
@@ -40,6 +40,9 @@ func Provider() *schema.Provider {
 				DefaultFunc: schema.EnvDefaultFunc("TSS_PASSWORD", nil),
 				Description: "The password of the Secret Server User",
 			},
+		},
+		ResourcesMap: map[string]*schema.Resource{
+			"tss_resource_secret": resourceSecret(),
 		},
 		ConfigureFunc: providerConfig,
 	}
