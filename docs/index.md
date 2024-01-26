@@ -10,6 +10,8 @@ description: |-
 
 The [Delinea](https://delinea.com/) [Secret Server](https://delinea.com/products/secret-server/) [Terraform](https://www.terraform.io/) Provider allows you to access and reference Secrets in your vault for use in Terraform configurations.
 
+For Delinea's official Terraform documentation, please see [here](https://docs.delinea.com/online-help/integrations/terraform/index.htm) for more information.
+
 ## Example Usage
 
 For Terraform 0.13+, include the `terraform` block in your configuration or plan to that specifies the provider:
@@ -20,6 +22,7 @@ terraform {
     tss = {
       source = "DelineaXPM/tss"
       version = "~> 2.0"
+
     }
   }
 }
