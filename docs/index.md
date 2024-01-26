@@ -20,8 +20,9 @@ For Terraform 0.13+, include the `terraform` block in your configuration or plan
 terraform {
   required_providers {
     tss = {
-      source = "delinea/tss"
-      version = "2.0.4"
+      source = "DelineaXPM/tss"
+      version = "~> 2.0"
+
     }
   }
 }
