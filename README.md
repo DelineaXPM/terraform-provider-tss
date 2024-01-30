@@ -114,3 +114,20 @@ $ export TSS_PASSWORD="Passw0rd."
 $ export TSS_SERVER_URL="https://localhost/SecretServer"
 $ terraform plan
 ```
+
+## Domain user accounts
+
+Domain users, such as Active Directory accounts, can be used by supplying the `tss_domain` parameter. E.G.
+
+```hcl
+tss_username   = "my_app_user"
+tss_password   = "Passw0rd."
+tss_server_url = "https://example/SecretServer"
+tss_domain     = "mycompany.com"
+```
+
+Alternatively, the domain can be provided with an environment variable:
+
+```sh
+$ export TSS_DOMAIN="mycompany.com"
+```
