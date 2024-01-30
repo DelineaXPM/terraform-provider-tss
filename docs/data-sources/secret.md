@@ -19,4 +19,12 @@ This resource can read a secret from the Secret Server
 
 - `value` (String, Sensitive) the value of the field of the secret
 
+## Example Usage
 
+Get Secret By ID:
+```hcl
+tss_username   = "my_app_user"
+tss_password   = "Passw0rd."
+tss_server_url = "https://example/SecretServer"
+tss_secret_id  = "1"
+```

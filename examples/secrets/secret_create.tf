@@ -3,7 +3,7 @@ terraform {
   required_providers {
     tss = {
       source = "DelineaXPM/tss"
-      version = "2.0.3"
+      version = "2.0.4"
     }
   }
 }
