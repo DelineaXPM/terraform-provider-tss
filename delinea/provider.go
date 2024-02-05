@@ -11,6 +11,7 @@ func providerConfig(d *schema.ResourceData) (interface{}, error) {
 		Credentials: server.UserCredential{
 			Username: d.Get("username").(string),
 			Password: d.Get("password").(string),
+			Domain:   d.Get("domain").(string),
 		},
 	}, nil
 }
@@ -39,6 +40,12 @@ func Provider() *schema.Provider {
 				Required:    true,
 				DefaultFunc: schema.EnvDefaultFunc("TSS_PASSWORD", nil),
 				Description: "The password of the Secret Server User",
+			},
+			"domain": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				DefaultFunc: schema.EnvDefaultFunc("TSS_DOMAIN", nil),
+				Description: "Domain of the Server Server user",
 			},
 		},
 		ResourcesMap: map[string]*schema.Resource{
