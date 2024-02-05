@@ -46,6 +46,23 @@ func dataSourceSecretReadNew(d *schema.ResourceData, meta interface{}) error {
 }
 
 func dataSourceSecretDelete(d *schema.ResourceData, meta interface{}) error {
+
+	id, err := strconv.Atoi(d.Id())
+
+	secrets, err := server.New(meta.(server.Configuration))
+	if err != nil {
+		log.Printf("[DEBUG] configuration error: %s", err)
+	}
+
+	log.Printf("[DEBUG] deleting secret with id %d", id)
+
+	err = secrets.DeleteSecret(id)
+	if err != nil {
+		return err
+	}
+
+	log.Printf("Secret is Deleted successfully...!")
+
 	return nil
 }
 
