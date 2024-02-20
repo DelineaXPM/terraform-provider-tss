@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/DelineaXPM/tss-sdk-go/v2/server"
-	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
 func resourceSecret() *schema.Resource {
