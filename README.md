@@ -23,7 +23,7 @@ Terraform 0.13 uses a different file system layout for 3rd party providers. More
 └───terraform.delinea.com
     DelineaXPM
         └───tss
-            └───2.0.6
+            └───2.0.5
                 └───windows_amd64
 ```
 
@@ -34,7 +34,7 @@ Terraform 0.13 uses a different file system layout for 3rd party providers. More
 └───terraform.delinea.com
     DelineaXPM
         └───tss
-            └───2.0.6
+            └───2.0.5
                 ├───linux_amd64
 ```
 
