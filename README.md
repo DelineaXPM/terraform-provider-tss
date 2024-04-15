@@ -55,6 +55,8 @@ terraform {
 
 To run the example, create a `terraform.tfvars` and use below variables to get and create/update secret:
 
+If you want to access the secret server via the platform, provide the platform URL as an input to tss_server_url, and the platform user credentials to tss_username and tss_password.
+
 Get Secret By ID:
 
 ```hcl
@@ -102,17 +104,28 @@ Above Create/Update Secret variables are for Windows Account secret template of 
 
 ## Environment variables
 
-You can provide your credentials via the TSS_SERVER_URL, TSS_USERNAME and TSS_PASSWORD environment variables.
+You can provide your credentials via the tss_server_url, tss_username and tss_password environment variables.
 In this case, tss provider could be represented like this 
 ```
-provider "tss" {}
+provider "tss" {
+  username   = var.tss_username
+  password   = var.tss_password
+  server_url = var.tss_server_url
+}
 ```
-Usage
+Usage (For Linux)
 ```
-$ export TSS_USERNAME="my_app_user"
-$ export TSS_PASSWORD="Passw0rd."
-$ export TSS_SERVER_URL="https://localhost/SecretServer"
-$ terraform plan
+$ export TF_VAR_tss_username="my_app_user"
+$ export TF_VAR_tss_password="Passw0rd."
+$ export TF_VAR_tss_server_url="https://localhost/SecretServer"
+$ terraform plan or $ terraform apply
+```
+Usage (For Windows)
+```
+> set TF_VAR_tss_username="my_app_user"
+> set TF_VAR_tss_password="Passw0rd."
+> set TF_VAR_tss_server_url="https://localhost/SecretServer"
+> terraform plan or > terraform apply
 ```
 
 ## Domain user accounts
