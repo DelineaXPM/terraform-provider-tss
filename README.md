@@ -23,7 +23,7 @@ Terraform 0.13 uses a different file system layout for 3rd party providers. More
 └───terraform.delinea.com
     DelineaXPM
         └───tss
-            └───2.0.6
+            └───2.0.7
                 └───windows_amd64
 ```
 
@@ -34,7 +34,7 @@ Terraform 0.13 uses a different file system layout for 3rd party providers. More
 └───terraform.delinea.com
     DelineaXPM
         └───tss
-            └───2.0.6
+            └───2.0.7
                 ├───linux_amd64
 ```
 
@@ -64,6 +64,14 @@ tss_username   = "my_app_user"
 tss_password   = "Passw0rd."
 tss_server_url = "https://example/SecretServer"
 tss_secret_id  = "1"
+```
+Get Secrets By ID:
+
+```hcl
+tss_username   = "my_app_user"
+tss_password   = "Passw0rd."
+tss_server_url = "https://example/SecretServer"
+tss_secret_ids  = ["1", "2", "3"]
 ```
 Create/Update Secret:
 
@@ -101,6 +109,10 @@ Above Create/Update Secret variables are for Windows Account secret template of 
 3. Click on Fields tab
 4. Based on template fields add/update field (with field name and item value) in fields array as above example. In above example there are four fields but in other template
  there might be more/less flieds. Accordingly, add/remove field entry from the fields array.
+
+Deactivate Secret:
+
+The secret will be deactivated in the Secret Server when the `terraform destroy` command is executed.
 
 ## Environment variables
 
