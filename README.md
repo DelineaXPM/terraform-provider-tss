@@ -1,6 +1,6 @@
 # Delinea Secret Server - Terraform Provider
 
-The [Delinea](https://delinea.com/) [Secret Server](https://delinea.com/products/secret-server/) [Terraform](https://www.terraform.io/) Provider allows you to access and reference Secrets in your vault for use in Terraform configurations.
+The [Delinea](https://delinea.com/) [Secret Server](https://delinea.com/products/secret-server/) [Terraform](https://www.terraform.io/) Provider allows you to access and reference Secrets in your vault for use in Terraform configurations. Detail documentation of this integration is available [here](https://docs.delinea.com/online-help/integrations/terraform/configure.htm)
 
 ## Install via Registry
 
@@ -23,7 +23,7 @@ Terraform 0.13 uses a different file system layout for 3rd party providers. More
 └───terraform.delinea.com
     DelineaXPM
         └───tss
-            └───2.0.7
+            └───2.0.8
                 └───windows_amd64
 ```
 
@@ -34,7 +34,7 @@ Terraform 0.13 uses a different file system layout for 3rd party providers. More
 └───terraform.delinea.com
     DelineaXPM
         └───tss
-            └───2.0.7
+            └───2.0.8
                 ├───linux_amd64
 ```
 
@@ -155,4 +155,29 @@ Alternatively, the domain can be provided with an environment variable:
 
 ```sh
 $ export TSS_DOMAIN="mycompany.com"
+```
+
+## Encrypt terraform state file using script wrapper
+
+Terraform supports multiple backends to securely store state files, such as AWS S3, Azure Blob Storage, and others. These backends also include built-in state locking mechanisms. However, when storing state files on a local machine drive, you need to manually encrypt the state file data to keep it secure.
+
+To encrypt or decrypt state file data during the Terraform workflow, you must perform encryption before executing Terraform commands and decryption afterward. This can be achieved by creating script wrappers around Terraform commands like terraform init, terraform apply, and terraform destroy.
+
+To use these script wrappers, place the script files in the Terraform executable directory and set the required user credentials in environment variables. For instructions on setting environment variables, refer to the section titled "Environment Variables" above.
+
+Scripts for reference and more detailed information are available [here](https://docs.delinea.com/online-help/integrations/terraform/index.htm). You can modify file paths in these scripts as needed.
+
+You can then execute the script wrappers as shown below:
+
+Usage (For Linux)
+```
+$ sh terraform_init.sh
+$ sh terraform_apply.sh
+$ sh terraform_destroy.sh
+```
+Usage (For Windows)
+```
+> terraform_init.bat
+> terraform_apply.bat
+> terraform_destroy.bat
 ```
