@@ -3,7 +3,7 @@ terraform {
   required_providers {
     tss = {
       source = "DelineaXPM/tss"
-      version = "2.0.7"
+      version = "2.0.8"
     }
   }
 }
@@ -48,7 +48,6 @@ provider "tss" {
   password   = var.tss_password
   server_url = var.tss_server_url
 }
-
 
 resource "tss_resource_secret" "secret_name" {
   name = var.tss_secret_name
