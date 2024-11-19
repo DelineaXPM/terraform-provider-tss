@@ -1,5 +1,5 @@
-github.com/DelineaXPM/tss-sdk-go/v2 v2.0.1 h1:/rzzzaBuj/FYTcbt8sYZ9IzlnENqcgh5zKqBhHiBBm4=
-github.com/DelineaXPM/tss-sdk-go/v2 v2.0.1/go.mod h1:xz6FXP2Do88Vc5Hx7OamZgZC1W45yfmLy4+iDKxlGXo=
+github.com/DelineaXPM/tss-sdk-go/v2 v2.0.2 h1:Y1yF8ewgWSPn741E/enJDRh7CmR3RM9LLGoglOuJ2pM=
+github.com/DelineaXPM/tss-sdk-go/v2 v2.0.2/go.mod h1:xz6FXP2Do88Vc5Hx7OamZgZC1W45yfmLy4+iDKxlGXo=
 github.com/agext/levenshtein v1.2.3 h1:YB2fHEn0UJagG8T1rrWknE3ZQzWM06O8AMAatNn7lmo=
 github.com/agext/levenshtein v1.2.3/go.mod h1:JEDfjyjHDjOF/1e4FlBE/PkbqA9OfWu2ki2W0IB5558=
 github.com/apparentlymart/go-textseg/v12 v12.0.0/go.mod h1:S/4uRK2UtaQttw1GenVJEynmyUenKwP++x/+DdGV/Ec=
