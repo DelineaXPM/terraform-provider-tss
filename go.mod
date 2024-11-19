@@ -1,7 +1,7 @@
 module github.com/DelineaXPM/terraform-provider-tss/v2
 
 require (
-	github.com/DelineaXPM/tss-sdk-go/v2 v2.0.1
+	github.com/DelineaXPM/tss-sdk-go/v2 v2.0.2
 	github.com/hashicorp/terraform-plugin-sdk/v2 v2.34.0
 	golang.org/x/crypto v0.28.0
 )

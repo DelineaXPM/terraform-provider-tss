@@ -23,7 +23,7 @@ Terraform 0.13 uses a different file system layout for 3rd party providers. More
 └───terraform.delinea.com
     DelineaXPM
         └───tss
-            └───2.0.8
+            └───2.0.9
                 └───windows_amd64
 ```
 
@@ -34,7 +34,7 @@ Terraform 0.13 uses a different file system layout for 3rd party providers. More
 └───terraform.delinea.com
     DelineaXPM
         └───tss
-            └───2.0.8
+            └───2.0.9
                 ├───linux_amd64
 ```
 
@@ -165,7 +165,7 @@ To encrypt or decrypt state file data during the Terraform workflow, you must pe
 
 To use these script wrappers, place the script files in the Terraform executable directory and set the required user credentials in environment variables. For instructions on setting environment variables, refer to the section titled "Environment Variables" above.
 
-Scripts for reference and more detailed information are available [here](https://docs.delinea.com/online-help/integrations/terraform/index.htm). You can modify file paths in these scripts as needed.
+Scripts for reference and more detailed information are available [here](https://docs.delinea.com/online-help/integrations/terraform/index.htm). You can modify file paths in these scripts as needed. Scripts for reference are also available [here](encryption_scripts).
 
 You can then execute the script wrappers as shown below:
 
