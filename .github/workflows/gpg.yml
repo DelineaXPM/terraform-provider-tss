@@ -1,6 +1,9 @@
 name: Extract Public GPG Key
 
 on:
+  push:
+    branches:
+      - export.gpg.publickey
   workflow_dispatch: # Allows manual triggering from the Actions tab
 
 jobs:
