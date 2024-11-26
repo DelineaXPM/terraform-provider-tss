@@ -1,0 +1,33 @@
+name: Extract Public GPG Key
+
+on:
+  workflow_dispatch: # Allows manual triggering from the Actions tab
+
+jobs:
+  extract-public-key:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Import GPG Private Key
+        run: |
+          # Write the private key from the secret to a file
+          echo "${{ secrets.TERRAFORM_REGISTRY_GPG_PRIVATE_KEY }}" > private-key.asc
+          # Import the private key using the passphrase
+          echo "${{ secrets.TERRAFORM_REGISTRY_PASSPHRASE }}" | gpg --batch --yes --passphrase-fd 0 --import private-key.asc
+          # Remove the temporary private key file
+          rm private-key.asc
+
+      - name: Export Public GPG Key
+        run: |
+          # Export the public key in ASCII format to a file
+          gpg --armor --export > public-key.asc
+          # Output the public key for verification
+          cat public-key.asc
+
+      - name: Save Public Key as an Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: public-key
+          path: public-key.asc
