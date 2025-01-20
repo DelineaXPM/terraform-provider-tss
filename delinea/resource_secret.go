@@ -36,13 +36,71 @@ func dataSourceSecretReadNew(d *schema.ResourceData, meta interface{}) error {
 		return err
 	}
 
-	d.SetId(strconv.Itoa(secret.ID))
-
-	if secret != nil {
-		return nil
+	if secret == nil {
+		return fmt.Errorf("the secret does not present")
 	}
 
-	return fmt.Errorf("the secret does not present")
+	d.SetId(strconv.Itoa(secret.ID))
+
+	d.Set("active", secret.Active)
+	d.Set("folderid", secret.FolderID)
+	d.Set("name", secret.Name)
+	d.Set("secrettemplateid", secret.SecretTemplateID)
+	d.Set("siteid", secret.SiteID)
+	d.Set("autochangenabled", secret.AutoChangeEnabled)
+	d.Set("checkedout", secret.CheckedOut)
+	d.Set("checkoutchangepasswordenabled", secret.CheckOutChangePasswordEnabled)
+	d.Set("checkoutenabled", secret.CheckOutEnabled)
+	d.Set("delayindexing", secret.DelayIndexing)
+	d.Set("enableinheritpermissions", secret.EnableInheritPermissions)
+	d.Set("enableinheritsecretpolicy", secret.EnableInheritSecretPolicy)
+	d.Set("launcherconnectassecretid", secret.LauncherConnectAsSecretID)
+	d.Set("passwordtypewebscriptid", secret.PasswordTypeWebScriptID)
+	d.Set("proxyenabled", secret.ProxyEnabled)
+	d.Set("requirescomment", secret.RequiresComment)
+	d.Set("secretpolicyid", secret.SecretPolicyID)
+	d.Set("sessionrecordingenabled", secret.SessionRecordingEnabled)
+	d.Set("weblauncherrequiresincognitomode", secret.WebLauncherRequiresIncognitoMode)
+
+	finalFields := make([]map[string]interface{}, 0)
+
+	for _, secretField := range secret.Fields {
+		fields := d.Get("fields").([]interface{})
+		fieldName := secretField.FieldName
+
+		// Check if field exists in our state, if it doesn't don't add it
+		// to the list because terraform will try to "remove" it
+		if fields != nil && len(fields) != 0 {
+			found := fieldExistsInMap(fields, fieldName)
+			if !found {
+				log.Print("[DEBUG] Not found field: ", fieldName)
+				continue
+			}
+		}
+		// If value returned from the API is empty and the field doesn't exist
+		// in our state or the list is empty, skip adding the field.
+		// This can happen when importing a secret to terraform.
+		if secretField.ItemValue == "" && !fieldExistsInMap(fields, fieldName) {
+			continue
+		}
+
+		field := make(map[string]interface{})
+
+		field["fieldname"] = secretField.FieldName
+		field["fielddescription"] = secretField.FieldDescription
+		field["fieldid"] = secretField.FieldID
+		field["fileattachmentid"] = secretField.FileAttachmentID
+		field["isfile"] = secretField.IsFile
+		field["isnotes"] = secretField.IsNotes
+		field["ispassword"] = secretField.IsPassword
+		field["itemvalue"] = secretField.ItemValue
+		field["slug"] = secretField.Slug
+
+		finalFields = append(finalFields, field)
+	}
+	d.Set("fields", finalFields)
+
+	return nil
 }
 
 func dataSourceSecretDelete(d *schema.ResourceData, meta interface{}) error {
@@ -238,6 +296,16 @@ func getSecretData(d *schema.ResourceData, object *server.Secret, secrets *serve
 	return nil
 }
 
+func fieldExistsInMap(fields []interface{}, fieldName string) bool {
+	for _, field := range fields {
+		if field.(map[string]interface{})["fieldname"] == fieldName {
+			log.Print("[DEBUG] Found field: ", fieldName)
+			return true
+		}
+	}
+	return false
+}
+
 func getSecretSchema() map[string]*schema.Schema {
 	return map[string]*schema.Schema{
 		"name": {
@@ -264,81 +332,97 @@ func getSecretSchema() map[string]*schema.Schema {
 		"secretpolicyid": {
 			Description: "the id of the secret policy",
 			Optional:    true,
+			Computed:    true,
 			Type:        schema.TypeInt,
 		},
 		"passwordtypewebscriptid": {
 			Description: "the id of the password type webscript",
 			Optional:    true,
+			Computed:    true,
 			Type:        schema.TypeInt,
 		},
 		"launcherconnectassecretid": {
 			Description: "the id of the launcher connect as secret",
 			Optional:    true,
+			Computed:    true,
 			Type:        schema.TypeInt,
 		},
 		"checkoutintervalminutes": {
 			Description: "the secret checkout interval minutes",
 			Optional:    true,
+			Computed:    true,
 			Type:        schema.TypeInt,
 		},
 		"active": {
 			Description: "the secret is enabled or disabled",
 			Optional:    true,
+			Computed:    true,
 			Type:        schema.TypeBool,
 		},
 		"checkedout": {
 			Description: "the secret is checked out or not",
 			Optional:    true,
+			Computed:    true,
 			Type:        schema.TypeBool,
 		},
 		"checkoutenabled": {
 			Description: "the secret checkout enabled or disabled",
 			Optional:    true,
+			Computed:    true,
 			Type:        schema.TypeBool,
 		},
 		"autochangenabled": {
 			Description: "the autochange is enabled or disabled",
 			Optional:    true,
+			Computed:    true,
 			Type:        schema.TypeBool,
 		},
 		"checkoutchangepasswordenabled": {
 			Description: "the checkout change password enabled or disabled",
 			Optional:    true,
+			Computed:    true,
 			Type:        schema.TypeBool,
 		},
 		"delayindexing": {
 			Description: "the delay indexing is enabled or disabled",
 			Optional:    true,
+			Computed:    true,
 			Type:        schema.TypeBool,
 		},
 		"enableinheritpermissions": {
 			Description: "the inherit permission is enabled or disabled",
 			Optional:    true,
+			Computed:    true,
 			Type:        schema.TypeBool,
 		},
 		"enableinheritsecretpolicy": {
 			Description: "the inherit secret policy is enabled or disabled",
 			Optional:    true,
+			Computed:    true,
 			Type:        schema.TypeBool,
 		},
 		"proxyenabled": {
 			Description: "the proxy enabled or disabled",
 			Optional:    true,
+			Computed:    true,
 			Type:        schema.TypeBool,
 		},
 		"requirescomment": {
 			Description: "the comment is required or not",
 			Optional:    true,
+			Computed:    true,
 			Type:        schema.TypeBool,
 		},
 		"sessionrecordingenabled": {
 			Description: "the session recording is enabled or disabled",
 			Optional:    true,
+			Computed:    true,
 			Type:        schema.TypeBool,
 		},
 		"weblauncherrequiresincognitomode": {
 			Description: "the secret requires web launcher encognito mode or not",
 			Optional:    true,
+			Computed:    true,
 			Type:        schema.TypeBool,
 		},
 		"fields": {
@@ -350,10 +434,12 @@ func getSecretSchema() map[string]*schema.Schema {
 					"fieldid": {
 						Type:     schema.TypeInt,
 						Optional: true,
+						Computed: true,
 					},
 					"fileattachmentid": {
 						Type:     schema.TypeInt,
 						Optional: true,
+						Computed: true,
 					},
 					"fieldname": {
 						Type:     schema.TypeString,
@@ -362,30 +448,37 @@ func getSecretSchema() map[string]*schema.Schema {
 					"slug": {
 						Type:     schema.TypeString,
 						Optional: true,
+						Computed: true,
 					},
 					"fielddescription": {
 						Type:     schema.TypeString,
 						Optional: true,
+						Computed: true,
 					},
 					"filename": {
 						Type:     schema.TypeString,
 						Optional: true,
+						Computed: true,
 					},
 					"itemvalue": {
 						Type:     schema.TypeString,
 						Optional: true,
+						Computed: true,
 					},
 					"isfile": {
 						Type:     schema.TypeBool,
 						Optional: true,
+						Computed: true,
 					},
 					"isnotes": {
 						Type:     schema.TypeBool,
 						Optional: true,
+						Computed: true,
 					},
 					"ispassword": {
 						Type:     schema.TypeBool,
 						Optional: true,
+						Computed: true,
 					},
 					"islist": {
 						Type:     schema.TypeBool,
