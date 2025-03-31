@@ -1,57 +1,97 @@
 package delinea
 
 import (
+	"context"
+
 	"github.com/DelineaXPM/tss-sdk-go/v2/server"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/provider"
+	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-func providerConfig(d *schema.ResourceData) (interface{}, error) {
-	return server.Configuration{
-		ServerURL: d.Get("server_url").(string),
-		Credentials: server.UserCredential{
-			Username: d.Get("username").(string),
-			Password: d.Get("password").(string),
-			Domain:   d.Get("domain").(string),
-		},
-	}, nil
+// TSSProvider defines the provider implementation
+type TSSProvider struct{}
+
+// TSSProviderModel defines the provider schema
+type TSSProviderModel struct {
+	ServerURL types.String `tfsdk:"server_url"`
+	Username  types.String `tfsdk:"username"`
+	Password  types.String `tfsdk:"password"`
+	Domain    types.String `tfsdk:"domain"`
 }
 
-// Provider is a Terraform DataSource
-func Provider() *schema.Provider {
-	return &schema.Provider{
-		DataSourcesMap: map[string]*schema.Resource{
-			"tss_secret":  dataSourceSecret(),
-			"tss_secrets": dataSourceSecrets(),
-		},
-		Schema: map[string]*schema.Schema{
-			"server_url": {
-				Type:        schema.TypeString,
+// Metadata returns the provider type name
+func (p *TSSProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
+	resp.TypeName = "tss"
+}
+
+// Schema defines the provider-level schema
+func (p *TSSProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Attributes: map[string]schema.Attribute{
+			"server_url": schema.StringAttribute{
 				Required:    true,
-				DefaultFunc: schema.EnvDefaultFunc("TSS_SERVER_URL", nil),
-				Description: "The Secret Server base URL e.g. https://localhost/SecretServer",
+				Description: "The Secret Server base URL",
 			},
-			"username": {
-				Type:        schema.TypeString,
+			"username": schema.StringAttribute{
 				Required:    true,
-				DefaultFunc: schema.EnvDefaultFunc("TSS_USERNAME", nil),
-				Description: "The username of the Secret Server User to connect as",
+				Description: "The username for authentication",
 			},
-			"password": {
-				Type:        schema.TypeString,
+			"password": schema.StringAttribute{
 				Required:    true,
-				DefaultFunc: schema.EnvDefaultFunc("TSS_PASSWORD", nil),
-				Description: "The password of the Secret Server User",
+				Sensitive:   true,
+				Description: "The password for authentication",
 			},
-			"domain": {
-				Type:        schema.TypeString,
+			"domain": schema.StringAttribute{
 				Optional:    true,
-				DefaultFunc: schema.EnvDefaultFunc("TSS_DOMAIN", nil),
-				Description: "Domain of the Server Server user",
+				Description: "The domain for authentication",
 			},
 		},
-		ResourcesMap: map[string]*schema.Resource{
-			"tss_resource_secret": resourceSecret(),
-		},
-		ConfigureFunc: providerConfig,
 	}
+}
+
+// Configure initializes the provider configuration
+func (p *TSSProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
+	var config TSSProviderModel
+
+	// Read configuration
+	diags := req.Config.Get(ctx, &config)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Create server configuration
+	serverConfig := server.Configuration{
+		ServerURL: config.ServerURL.ValueString(),
+		Credentials: server.UserCredential{
+			Username: config.Username.ValueString(),
+			Password: config.Password.ValueString(),
+			Domain:   config.Domain.ValueString(),
+		},
+	}
+
+	resp.DataSourceData = serverConfig
+	resp.ResourceData = serverConfig
+}
+
+// Resources returns the resources supported by the provider
+func (p *TSSProvider) Resources(ctx context.Context) []func() resource.Resource {
+	return []func() resource.Resource{
+		func() resource.Resource { return &TSSSecretResource{} },
+	}
+}
+
+// DataSources returns the data sources supported by the provider
+func (p *TSSProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
+	return []func() datasource.DataSource{
+		func() datasource.DataSource { return &TSSSecretDataSource{} },
+	}
+}
+
+// New returns a new instance of the provider
+func New() provider.Provider {
+	return &TSSProvider{}
 }
