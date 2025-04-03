@@ -34,6 +34,10 @@ func (d *TSSSecretDataSource) Schema(ctx context.Context, req datasource.SchemaR
 				Sensitive:   true,
 				Description: "The value of the secret",
 			},
+			"field": schema.StringAttribute{
+				Description: "the field to extract from the secret",
+				Required:    true,
+			},
 		},
 	}
 }
@@ -56,6 +60,11 @@ func (d *TSSSecretDataSource) Read(ctx context.Context, req datasource.ReadReque
 	var state struct {
 		SecretID    types.String `tfsdk:"secret_id"`
 		SecretValue types.String `tfsdk:"secret_value"`
+		Field       types.String `tfsdk:"field"`
+		Secret      struct {
+			ID    types.Int64  `tfsdk:"id"`
+			Value types.String `tfsdk:"value"`
+		} `tfsdk:"secrets"`
 	}
 
 	// Read the configuration
@@ -85,29 +94,25 @@ func (d *TSSSecretDataSource) Read(ctx context.Context, req datasource.ReadReque
 		return
 	}
 
-	// Fetch the secret value
+	// Fetch the secret
 	secret, err := client.Secret(secretID)
 	if err != nil {
 		resp.Diagnostics.AddError("Secret Fetch Error", fmt.Sprintf("Failed to fetch secret: %s", err))
 		return
 	}
 
-	// Convert the field key to an integer if necessary
-	fieldKey, err := strconv.Atoi("password") // Replace "password" with the appropriate key if needed
-	if err != nil {
-		resp.Diagnostics.AddError("Invalid Field Key", fmt.Sprintf("The field key '%s' is not a valid integer: %s", "password", err))
-		return
-	}
+	// Get the field name dynamically
+	fieldName := state.Field.ValueString()
 
 	// Extract the secret value
-	secretValue, ok := secret.Fields[fieldKey]
+	fieldValue, ok := secret.Field(fieldName)
 	if !ok {
-		resp.Diagnostics.AddError("Field Not Found", fmt.Sprintf("The secret does not contain the field '%d'", fieldKey))
+		resp.Diagnostics.AddError("Field Not Found", fmt.Sprintf("The secret does not contain the field '%s'", fieldName))
 		return
 	}
 
 	// Set the state
-	state.SecretValue = types.StringValue(secretValue)
+	state.SecretValue = types.StringValue(fieldValue)
 	diags = resp.State.Set(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 }

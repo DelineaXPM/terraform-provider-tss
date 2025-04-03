@@ -3,7 +3,6 @@ package delinea
 import (
 	"context"
 	"fmt"
-	"strconv"
 
 	"github.com/DelineaXPM/tss-sdk-go/v2/server"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -68,7 +67,6 @@ func (d *TSSSecretsDataSource) Configure(ctx context.Context, req datasource.Con
 	d.clientConfig = &config
 }
 
-// Read handles reading the data source state
 func (d *TSSSecretsDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var state struct {
 		IDs     []types.Int64 `tfsdk:"ids"`
@@ -115,18 +113,14 @@ func (d *TSSSecretsDataSource) Read(ctx context.Context, req datasource.ReadRequ
 			continue // Skip this ID and continue with the rest
 		}
 
-		// Convert field key to int if necessary
-		fieldKey, err := strconv.Atoi(state.Field.ValueString())
-		if err != nil {
-			resp.Diagnostics.AddError("Invalid Field Key", fmt.Sprintf("The field key '%s' is not a valid integer: %s", state.Field.ValueString(), err))
-			continue
-		}
+		// Get the field name dynamically
+		fieldName := state.Field.ValueString()
 
 		// Extract the field value
-		fieldValue, ok := secret.Field[fieldKey]
+		fieldValue, ok := secret.Field(fieldName)
 		if !ok {
-			resp.Diagnostics.AddWarning("Field Not Found", fmt.Sprintf("The secret with ID %d does not contain the field '%d'", secretID, fieldKey))
-			continue // Skip this secret if the field is not found
+			resp.Diagnostics.AddError("Field Not Found", fmt.Sprintf("The secret does not contain the field '%s'", fieldName))
+			continue
 		}
 
 		// Add the secret to the results
