@@ -27,16 +27,20 @@ func (d *TSSSecretDataSource) Schema(ctx context.Context, req datasource.SchemaR
 		Attributes: map[string]schema.Attribute{
 			"secret_id": schema.StringAttribute{
 				Required:    true,
-				Description: "The ID of the secret to retrieve",
+				Description: "The ID of the secret to retrieve.",
+			},
+			"field": schema.StringAttribute{
+				Required:    true,
+				Description: "The field to extract from the secret.",
+			},
+			"ephemeral": schema.BoolAttribute{
+				Optional:    true,
+				Description: "If true, the secret value will not be saved in the Terraform state file.",
 			},
 			"secret_value": schema.StringAttribute{
 				Computed:    true,
 				Sensitive:   true,
-				Description: "The value of the secret",
-			},
-			"field": schema.StringAttribute{
-				Description: "the field to extract from the secret",
-				Required:    true,
+				Description: "The value of the requested field from the secret.",
 			},
 		},
 	}
@@ -45,29 +49,27 @@ func (d *TSSSecretDataSource) Schema(ctx context.Context, req datasource.SchemaR
 // Configure initializes the data source with the provider configuration
 func (d *TSSSecretDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
 	// Retrieve the provider configuration
-	config, ok := req.ProviderData.(server.Configuration)
+	config, ok := req.ProviderData.(*server.Configuration)
 	if !ok {
 		resp.Diagnostics.AddError("Configuration Error", "Failed to retrieve provider configuration")
 		return
 	}
 
 	// Store the provider configuration in the data source
-	d.clientConfig = &config
+	d.clientConfig = config
 }
 
 // Read retrieves the data for the data source
 func (d *TSSSecretDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+	// Define the state structure
 	var state struct {
 		SecretID    types.String `tfsdk:"secret_id"`
-		SecretValue types.String `tfsdk:"secret_value"`
 		Field       types.String `tfsdk:"field"`
-		Secret      struct {
-			ID    types.Int64  `tfsdk:"id"`
-			Value types.String `tfsdk:"value"`
-		} `tfsdk:"secrets"`
+		Ephemeral   types.Bool   `tfsdk:"ephemeral"`
+		SecretValue types.String `tfsdk:"secret_value"`
 	}
 
-	// Read the configuration
+	// Read the configuration from the request
 	diags := req.Config.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -111,8 +113,17 @@ func (d *TSSSecretDataSource) Read(ctx context.Context, req datasource.ReadReque
 		return
 	}
 
+	// Check if the value should be ephemeral
+	if state.Ephemeral.ValueBool() {
+		// Do not set the secret value in the state
+		resp.Diagnostics.AddWarning("Ephemeral Value", "The secret value is marked as ephemeral and will not be saved in the Terraform state.")
+		state.SecretValue = types.StringNull() // Mark the value as null
+	} else {
+		// Set the secret value in the state
+		state.SecretValue = types.StringValue(fieldValue)
+	}
+
 	// Set the state
-	state.SecretValue = types.StringValue(fieldValue)
 	diags = resp.State.Set(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 }

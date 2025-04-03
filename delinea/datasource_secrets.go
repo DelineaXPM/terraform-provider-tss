@@ -33,6 +33,10 @@ func (d *TSSSecretsDataSource) Schema(ctx context.Context, req datasource.Schema
 				Required:    true,
 				Description: "The field to extract from the secrets",
 			},
+			"ephemeral": schema.BoolAttribute{
+				Optional:    true,
+				Description: "If true, the secret values will not be saved in the Terraform state file.",
+			},
 			"secrets": schema.ListNestedAttribute{
 				Computed:    true,
 				Description: "A list of secrets with their field values",
@@ -69,9 +73,10 @@ func (d *TSSSecretsDataSource) Configure(ctx context.Context, req datasource.Con
 
 func (d *TSSSecretsDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var state struct {
-		IDs     []types.Int64 `tfsdk:"ids"`
-		Field   types.String  `tfsdk:"field"`
-		Secrets []struct {
+		IDs       []types.Int64 `tfsdk:"ids"`
+		Field     types.String  `tfsdk:"field"`
+		Ephemeral types.Bool    `tfsdk:"ephemeral"`
+		Secrets   []struct {
 			ID    types.Int64  `tfsdk:"id"`
 			Value types.String `tfsdk:"value"`
 		} `tfsdk:"secrets"`
@@ -123,14 +128,27 @@ func (d *TSSSecretsDataSource) Read(ctx context.Context, req datasource.ReadRequ
 			continue
 		}
 
-		// Add the secret to the results
-		results = append(results, struct {
-			ID    types.Int64  `tfsdk:"id"`
-			Value types.String `tfsdk:"value"`
-		}{
-			ID:    types.Int64Value(int64(secretID)),
-			Value: types.StringValue(fieldValue),
-		})
+		// Check if the value should be ephemeral
+		if state.Ephemeral.ValueBool() {
+			// Do not save the secret value in the state
+			resp.Diagnostics.AddWarning("Ephemeral Value", fmt.Sprintf("The value for secret ID %d is marked as ephemeral and will not be saved in the Terraform state.", secretID))
+			results = append(results, struct {
+				ID    types.Int64  `tfsdk:"id"`
+				Value types.String `tfsdk:"value"`
+			}{
+				ID:    types.Int64Value(int64(secretID)),
+				Value: types.StringNull(), // Mark the value as null
+			})
+		} else {
+			// Save the secret value in the state
+			results = append(results, struct {
+				ID    types.Int64  `tfsdk:"id"`
+				Value types.String `tfsdk:"value"`
+			}{
+				ID:    types.Int64Value(int64(secretID)),
+				Value: types.StringValue(fieldValue),
+			})
+		}
 	}
 
 	// Set the state

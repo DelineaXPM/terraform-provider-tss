@@ -3,10 +3,8 @@ package delinea
 import (
 	"context"
 	"fmt"
-	"strconv"
 
 	"github.com/DelineaXPM/tss-sdk-go/v2/server"
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -14,7 +12,7 @@ import (
 
 // TSSSecretResource defines the resource implementation
 type TSSSecretResource struct {
-	clientConfig *server.Configuration // Store the server configuration
+	clientConfig *server.Configuration // Store the provider configuration
 }
 
 // Metadata provides the resource type name
@@ -26,14 +24,22 @@ func (r *TSSSecretResource) Metadata(ctx context.Context, req resource.MetadataR
 func (r *TSSSecretResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"secret_id": schema.StringAttribute{
-				Required:    true,
-				Description: "The ID of the secret",
-			},
-			"password": schema.StringAttribute{
+			"id": schema.Int64Attribute{
 				Computed:    true,
+				Description: "The ID of the secret.",
+			},
+			"field": schema.StringAttribute{
+				Required:    true,
+				Description: "The field to manage in the secret.",
+			},
+			"value": schema.StringAttribute{
+				Optional:    true,
 				Sensitive:   true,
-				Description: "The ephemeral password of the secret",
+				Description: "The value of the field to manage.",
+			},
+			"ephemeral": schema.BoolAttribute{
+				Optional:    true,
+				Description: "If true, the secret value will not be saved in the Terraform state file.",
 			},
 		},
 	}
@@ -41,99 +47,29 @@ func (r *TSSSecretResource) Schema(ctx context.Context, req resource.SchemaReque
 
 // Configure initializes the resource with the provider configuration
 func (r *TSSSecretResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	providerConfig, ok := req.ProviderData.(server.Configuration)
+	// Retrieve the provider configuration
+	config, ok := req.ProviderData.(*server.Configuration)
 	if !ok {
 		resp.Diagnostics.AddError("Configuration Error", "Failed to retrieve provider configuration")
 		return
 	}
 
-	// Store the server configuration in the resource
-	r.clientConfig = &providerConfig
+	// Store the provider configuration in the resource
+	r.clientConfig = config
 }
 
-// Create handles the creation of the resource
+// Create creates the resource
 func (r *TSSSecretResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var plan struct {
-		SecretID  types.String `tfsdk:"secret_id"`
-		Ephemeral types.Bool   `tfsdk:"ephemeral"`
-	}
-
-	// Read the plan
-	diags := req.Plan.Get(ctx, &plan)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	// Ensure the client configuration is set
-	if r.clientConfig == nil {
-		resp.Diagnostics.AddError("Client Error", "The server client is not configured")
-		return
-	}
-
-	// Create the server client
-	client, err := server.New(*r.clientConfig)
-	if err != nil {
-		resp.Diagnostics.AddError("Client Creation Error", fmt.Sprintf("Failed to create server client: %s", err))
-		return
-	}
-
-	// Convert SecretID to int
-	secretID, err := strconv.Atoi(plan.SecretID.ValueString())
-	if err != nil {
-		resp.Diagnostics.AddError("Invalid Secret ID", "Secret ID must be an integer")
-		return
-	}
-
-	// Fetch the secret
-	secret, err := client.Secret(secretID)
-	if err != nil {
-		resp.Diagnostics.AddError("Secret Fetch Error", fmt.Sprintf("Failed to fetch secret: %s", err))
-		return
-	}
-
-	// Convert the field key to an integer if necessary
-	passwordKey := "password" // Define the key for the password field
-	fieldKey, err := strconv.Atoi(passwordKey)
-	if err != nil {
-		resp.Diagnostics.AddError("Invalid Field Key", fmt.Sprintf("The field key '%s' is not a valid integer: %s", passwordKey, err))
-		return
-	}
-
-	// Extract the password
-	// Extract the password
-	password, ok := secret.Field("value")
-	if !ok {
-		resp.Diagnostics.AddError("Field Not Found", fmt.Sprintf("The secret does not contain the field '%d'", fieldKey))
-		return
-	}
-
-	// Handle ephemeral behavior
-	if plan.Ephemeral.ValueBool() {
-		// Dynamically set the ephemeral password without persisting it
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("password"), types.StringValue(password))...)
-	} else {
-		// Persist the password in the state
-		resp.State.Set(ctx, &struct {
-			SecretID types.String `tfsdk:"secret_id"`
-			Password types.String `tfsdk:"password"`
-		}{
-			SecretID: plan.SecretID,
-			Password: types.StringValue(password),
-		})
-	}
-}
-
-// Read handles reading the resource state
-func (r *TSSSecretResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state struct {
-		SecretID  types.String `tfsdk:"secret_id"`
+		ID        types.Int64  `tfsdk:"id"`
+		Name      types.String `tfsdk:"name"`
 		Field     types.String `tfsdk:"field"`
+		Value     types.String `tfsdk:"value"`
 		Ephemeral types.Bool   `tfsdk:"ephemeral"`
 	}
 
-	// Read the state
-	diags := req.State.Get(ctx, &state)
+	// Read the configuration
+	diags := req.Plan.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -148,65 +84,57 @@ func (r *TSSSecretResource) Read(ctx context.Context, req resource.ReadRequest, 
 	// Create the server client
 	client, err := server.New(*r.clientConfig)
 	if err != nil {
-		resp.Diagnostics.AddError("Client Creation Error", fmt.Sprintf("Failed to create server client: %s", err))
+		resp.Diagnostics.AddError("Configuration Error", fmt.Sprintf("Failed to create server client: %s", err))
 		return
 	}
 
-	// Convert SecretID to int
-	secretID, err := strconv.Atoi(state.SecretID.ValueString())
+	// Construct the secret object
+	newSecret := server.Secret{
+		Name: state.Name.ValueString(), // Use the "name" field for the secret's name
+		Fields: []server.SecretField{
+			{
+				FieldName: state.Field.ValueString(), // Use the "field" for the field name
+				ItemValue: state.Value.ValueString(), // Use the "value" for the field value
+			},
+		},
+	}
+
+	// Use the client to create the secret
+	createdSecret, err := client.CreateSecret(newSecret)
 	if err != nil {
-		resp.Diagnostics.AddError("Invalid Secret ID", "Secret ID must be an integer")
+		resp.Diagnostics.AddError("Secret Creation Error", fmt.Sprintf("Failed to create secret: %s", err))
 		return
 	}
 
-	// Fetch the secret
-	secret, err := client.Secret(secretID)
-	if err != nil {
-		resp.Diagnostics.AddError("Secret Fetch Error", fmt.Sprintf("Failed to fetch secret: %s", err))
-		return
-	}
+	// Set the secret ID in the state
+	state.ID = types.Int64Value(int64(createdSecret.ID))
 
-	// Extract the password
-	// Ensure the field name exists before accessing it
-	if state.Field.IsNull() || state.Field.IsUnknown() {
-		resp.Diagnostics.AddError("Missing Field Name", "The 'field' attribute is required but was not found in the state.")
-		return
-	}
-
-	// Get the field name dynamically (same as old implementation)
-	fieldName := state.Field.ValueString()
-
-	// Retrieve the secret field dynamically
-	value, ok := secret.Field(fieldName)
-	if !ok {
-		resp.Diagnostics.AddError("Field Not Found", fmt.Sprintf("The secret does not contain the field '%s'", fieldName))
-		return
-	}
-
-	// Handle ephemeral behavior
+	// Check if the value should be ephemeral
 	if state.Ephemeral.ValueBool() {
-		// Dynamically set the ephemeral field without persisting it
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("value"), types.StringValue(value))...)
+		// Do not save the secret value in the state
+		resp.Diagnostics.AddWarning("Ephemeral Value", "The secret value is marked as ephemeral and will not be saved in the Terraform state.")
+		state.Value = types.StringNull() // Mark the value as null
 	} else {
-		// Persist the value in the state
-		resp.State.Set(ctx, &struct {
-			SecretID types.String `tfsdk:"secret_id"`
-			Field    types.String `tfsdk:"field"`
-			Value    types.String `tfsdk:"value"`
-		}{
-			SecretID: state.SecretID,
-			Field:    state.Field,
-			Value:    types.StringValue(value),
-		})
+		// Save the secret value in the state
+		state.Value = types.StringValue(state.Value.ValueString())
 	}
+
+	// Set the state
+	diags = resp.State.Set(ctx, &state)
+	resp.Diagnostics.Append(diags...)
 }
 
-// Update handles updating the resource
+// Read reads the resource
+func (r *TSSSecretResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	// Implement similar logic for reading the resource
+}
+
+// Update updates the resource
 func (r *TSSSecretResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	// No update logic needed for this resource
+	// Implement similar logic for updating the resource
 }
 
-// Delete handles deleting the resource
+// Delete deletes the resource
 func (r *TSSSecretResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	// No action needed for ephemeral values
+	// Implement logic for deleting the resource
 }
