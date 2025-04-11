@@ -59,16 +59,25 @@ func (d *TSSSecretsDataSource) Schema(ctx context.Context, req datasource.Schema
 }
 
 // Configure initializes the data source with the provider configuration
+// Configure initializes the data source with the provider configuration
 func (d *TSSSecretsDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	// Log the received ProviderData
+	fmt.Printf("DEBUG: ProviderData received in Configure: %+v\n", req.ProviderData)
+
 	// Retrieve the provider configuration
-	config, ok := req.ProviderData.(server.Configuration)
+	config, ok := req.ProviderData.(*server.Configuration)
 	if !ok {
 		resp.Diagnostics.AddError("Configuration Error", "Failed to retrieve provider configuration")
+		fmt.Println("ERROR: ProviderData is nil or not of type *server.Configuration")
 		return
 	}
 
+	// Log the successfully retrieved configuration
+	fmt.Printf("DEBUG: Successfully retrieved provider configuration: %+v\n", config)
+
 	// Store the provider configuration in the data source
-	d.clientConfig = &config
+	d.clientConfig = config
+	fmt.Println("DEBUG: Provider configuration stored in clientConfig")
 }
 
 func (d *TSSSecretsDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {

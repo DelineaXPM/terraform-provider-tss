@@ -47,7 +47,6 @@ func (r *TSSSecretResource) Schema(ctx context.Context, req resource.SchemaReque
 
 // Configure initializes the resource with the provider configuration
 func (r *TSSSecretResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	// Retrieve the provider configuration
 	config, ok := req.ProviderData.(*server.Configuration)
 	if !ok {
 		resp.Diagnostics.AddError("Configuration Error", "Failed to retrieve provider configuration")
