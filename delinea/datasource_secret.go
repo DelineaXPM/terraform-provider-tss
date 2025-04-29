@@ -51,7 +51,11 @@ func (d *TSSSecretDataSource) Schema(ctx context.Context, req datasource.SchemaR
 
 // Configure initializes the data source with the provider configuration
 func (d *TSSSecretDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	tflog.Debug(ctx, "Configure function called")
+	if req.ProviderData == nil {
+		// IMPORTANT: This method is called MULTIPLE times. An initial call might not have configured the Provider yet, so we need
+		// to handle this gracefully. It will eventually be called with a configured provider.
+		return
+	}
 
 	config, ok := req.ProviderData.(*server.Configuration)
 	if !ok || config == nil {
