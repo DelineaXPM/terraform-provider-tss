@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/DelineaXPM/tss-sdk-go/v2/server"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -433,10 +434,37 @@ func (r *TSSSecretResource) getSecretData(ctx context.Context, state *SecretReso
 
 	// Construct the fields dynamically
 	var fields []server.SecretField
-	for key, value := range state.Fields {
+	for _, field := range state.Fields {
+		templateField := server.SecretTemplateField{}
+		fieldName := field.FieldName.ValueString()
+
+		// Match the field name with the template fields
+		for _, record := range template.Fields {
+			if strings.EqualFold(record.Name, fieldName) || strings.EqualFold(record.FieldSlugName, fieldName) {
+				templateField = record
+				break
+			}
+		}
+
+		// Populate the field object
 		fields = append(fields, server.SecretField{
-			FieldName: strconv.Itoa(key),
-			ItemValue: value.ItemValue.ValueString(),
+			FieldDescription: templateField.Description,
+			FieldID:          templateField.SecretTemplateFieldID,
+			FieldName:        templateField.Name,
+			FileAttachmentID: func() int {
+				if !field.ItemValue.IsNull() {
+					value, err := strconv.Atoi(field.ItemValue.ValueString())
+					if err == nil {
+						return value
+					}
+				}
+				return 0
+			}(),
+			IsFile:     templateField.IsFile,
+			IsNotes:    templateField.IsNotes,
+			IsPassword: templateField.IsPassword,
+			ItemValue:  field.ItemValue.ValueString(),
+			Slug:       templateField.FieldSlugName,
 		})
 	}
 
