@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/DelineaXPM/tss-sdk-go/v2/server"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -19,32 +20,50 @@ type TSSSecretResource struct {
 
 // SecretResourceState defines the state structure for the secret resource
 type SecretResourceState struct {
-	ID               types.Int64  `tfsdk:"id"`
-	Name             types.String `tfsdk:"name"`
-	FolderID         types.String `tfsdk:"folderid"`
-	SiteID           types.String `tfsdk:"siteid"`
-	SecretTemplateID types.String `tfsdk:"secrettemplateid"`
-	Fields           []struct {
-		FieldName types.String `tfsdk:"fieldname"`
-		ItemValue types.String `tfsdk:"itemvalue"`
-	} `tfsdk:"fields"`
-	Active                           types.Bool  `tfsdk:"active"`
-	Ephemeral                        types.Bool  `tfsdk:"ephemeral"`
-	SecretPolicyID                   types.Int64 `tfsdk:"secretpolicyid"`
-	PasswordTypeWebScriptID          types.Int64 `tfsdk:"passwordtypewebscriptid"`
-	LauncherConnectAsSecretID        types.Int64 `tfsdk:"launcherconnectassecretid"`
-	CheckOutIntervalMinutes          types.Int64 `tfsdk:"checkoutintervalminutes"`
-	CheckedOut                       types.Bool  `tfsdk:"checkedout"`
-	CheckOutEnabled                  types.Bool  `tfsdk:"checkoutenabled"`
-	AutoChangeEnabled                types.Bool  `tfsdk:"autochangenabled"`
-	CheckOutChangePasswordEnabled    types.Bool  `tfsdk:"checkoutchangepasswordenabled"`
-	DelayIndexing                    types.Bool  `tfsdk:"delayindexing"`
-	EnableInheritPermissions         types.Bool  `tfsdk:"enableinheritpermissions"`
-	EnableInheritSecretPolicy        types.Bool  `tfsdk:"enableinheritsecretpolicy"`
-	ProxyEnabled                     types.Bool  `tfsdk:"proxyenabled"`
-	RequiresComment                  types.Bool  `tfsdk:"requirescomment"`
-	SessionRecordingEnabled          types.Bool  `tfsdk:"sessionrecordingenabled"`
-	WebLauncherRequiresIncognitoMode types.Bool  `tfsdk:"weblauncherrequiresincognitomode"`
+	ID                               types.Int64   `tfsdk:"id"`
+	Name                             types.String  `tfsdk:"name"`
+	FolderID                         types.String  `tfsdk:"folderid"`
+	SiteID                           types.String  `tfsdk:"siteid"`
+	SecretTemplateID                 types.String  `tfsdk:"secrettemplateid"`
+	Fields                           []SecretField `tfsdk:"fields"`
+	SshKeyArgs                       *SshKeyArgs   `tfsdk:"sshkeyargs"`
+	Active                           types.Bool    `tfsdk:"active"`
+	SecretPolicyID                   types.Int64   `tfsdk:"secretpolicyid"`
+	PasswordTypeWebScriptID          types.Int64   `tfsdk:"passwordtypewebscriptid"`
+	LauncherConnectAsSecretID        types.Int64   `tfsdk:"launcherconnectassecretid"`
+	CheckOutIntervalMinutes          types.Int64   `tfsdk:"checkoutintervalminutes"`
+	CheckedOut                       types.Bool    `tfsdk:"checkedout"`
+	CheckOutEnabled                  types.Bool    `tfsdk:"checkoutenabled"`
+	AutoChangeEnabled                types.Bool    `tfsdk:"autochangenabled"`
+	CheckOutChangePasswordEnabled    types.Bool    `tfsdk:"checkoutchangepasswordenabled"`
+	DelayIndexing                    types.Bool    `tfsdk:"delayindexing"`
+	EnableInheritPermissions         types.Bool    `tfsdk:"enableinheritpermissions"`
+	EnableInheritSecretPolicy        types.Bool    `tfsdk:"enableinheritsecretpolicy"`
+	ProxyEnabled                     types.Bool    `tfsdk:"proxyenabled"`
+	RequiresComment                  types.Bool    `tfsdk:"requirescomment"`
+	SessionRecordingEnabled          types.Bool    `tfsdk:"sessionrecordingenabled"`
+	WebLauncherRequiresIncognitoMode types.Bool    `tfsdk:"weblauncherrequiresincognitomode"`
+}
+
+type SecretField struct {
+	FieldName        types.String `tfsdk:"fieldname"`
+	ItemValue        types.String `tfsdk:"itemvalue"`
+	ItemID           types.Int64  `tfsdk:"itemid"`
+	FieldID          types.Int64  `tfsdk:"fieldid"`
+	FileAttachmentID types.Int64  `tfsdk:"fileattachmentid"`
+	Slug             types.String `tfsdk:"slug"`
+	FieldDescription types.String `tfsdk:"fielddescription"`
+	Filename         types.String `tfsdk:"filename"`
+	IsFile           types.Bool   `tfsdk:"isfile"`
+	IsNotes          types.Bool   `tfsdk:"isnotes"`
+	IsPassword       types.Bool   `tfsdk:"ispassword"`
+	IsList           types.Bool   `tfsdk:"islist"`
+	ListType         types.String `tfsdk:"listtype"`
+}
+
+type SshKeyArgs struct {
+	GeneratePassphrase types.Bool `tfsdk:"generatepassphrase"`
+	GenerateSshKeys    types.Bool `tfsdk:"generatesshkeys"`
 }
 
 // Metadata provides the resource type name
@@ -54,6 +73,10 @@ func (r *TSSSecretResource) Metadata(ctx context.Context, req resource.MetadataR
 
 // Configure initializes the resource with the provider configuration
 func (r *TSSSecretResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+
 	config, ok := req.ProviderData.(*server.Configuration)
 	if !ok {
 		resp.Diagnostics.AddError("Configuration Error", "Failed to retrieve provider configuration")
@@ -68,10 +91,10 @@ func (r *TSSSecretResource) Configure(ctx context.Context, req resource.Configur
 
 // Create creates the resource
 func (r *TSSSecretResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var state SecretResourceState
+	var plan SecretResourceState
 
 	// Read the configuration
-	diags := req.Plan.Get(ctx, &state)
+	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -90,34 +113,12 @@ func (r *TSSSecretResource) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 
-	// Convert string attributes to integers
-	folderID, err := stringToInt(state.FolderID)
-	if err != nil {
-		resp.Diagnostics.AddError("Invalid Folder ID", "Folder ID must be a valid integer")
-		return
-	}
-	siteID, err := stringToInt(state.SiteID)
-	if err != nil {
-		resp.Diagnostics.AddError("Invalid Site ID", "Site ID must be a valid integer")
-		return
-	}
-	templateID, err := stringToInt(state.SecretTemplateID)
-	if err != nil {
-		resp.Diagnostics.AddError("Invalid Template ID", "Template ID must be a valid integer")
-		return
-	}
-
 	// Get the secret data
-	newSecret, err := r.getSecretData(ctx, &state, client)
+	newSecret, err := r.getSecretData(ctx, &plan, client)
 	if err != nil {
 		resp.Diagnostics.AddError("Secret Data Error", fmt.Sprintf("Failed to prepare secret data: %s", err))
 		return
 	}
-
-	// Update the secret object with converted IDs
-	newSecret.FolderID = folderID
-	newSecret.SiteID = siteID
-	newSecret.SecretTemplateID = templateID
 
 	// Use the client to create the secret
 	createdSecret, err := client.CreateSecret(*newSecret)
@@ -126,28 +127,27 @@ func (r *TSSSecretResource) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 
-	// Set the secret ID in the state
-	state.ID = types.Int64Value(int64(createdSecret.ID))
-
-	// Check if the value should be ephemeral
-	if state.Ephemeral.ValueBool() {
-		resp.Diagnostics.AddWarning("Ephemeral Value", "The secret value is marked as ephemeral and will not be saved in the Terraform state.")
-		for i := range state.Fields {
-			state.Fields[i].ItemValue = types.StringNull()
-		}
+	//Refresh state
+	newState, readDiags := r.readSecretByID(ctx, createdSecret.ID, client)
+	resp.Diagnostics.Append(readDiags...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	// Set the state
-	diags = resp.State.Set(ctx, &state)
+	diags = resp.State.Set(ctx, newState)
 	resp.Diagnostics.Append(diags...)
 }
 
 // Update updates the resource
 func (r *TSSSecretResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var plan SecretResourceState
 	var state SecretResourceState
 
 	// Read the plan
-	diags := req.Plan.Get(ctx, &state)
+	diags := req.Plan.Get(ctx, &plan)
+	resp.Diagnostics.Append(diags...)
+	diags = req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -167,7 +167,7 @@ func (r *TSSSecretResource) Update(ctx context.Context, req resource.UpdateReque
 	}
 
 	// Get the secret data
-	updatedSecret, err := r.getSecretData(ctx, &state, client)
+	updatedSecret, err := r.getSecretData(ctx, &plan, client)
 	if err != nil {
 		resp.Diagnostics.AddError("Secret Data Error", fmt.Sprintf("Failed to prepare secret data: %s", err))
 		return
@@ -181,8 +181,15 @@ func (r *TSSSecretResource) Update(ctx context.Context, req resource.UpdateReque
 		return
 	}
 
+	//Refresh state
+	newState, readDiags := r.readSecretByID(ctx, updatedSecret.ID, client)
+	resp.Diagnostics.Append(readDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	// Set the state
-	diags = resp.State.Set(ctx, &state)
+	diags = resp.State.Set(ctx, newState)
 	resp.Diagnostics.Append(diags...)
 }
 
@@ -240,34 +247,42 @@ func (r *TSSSecretResource) Schema(ctx context.Context, req resource.SchemaReque
 			},
 			"secretpolicyid": schema.Int64Attribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "The ID of the secret policy.",
 			},
 			"passwordtypewebscriptid": schema.Int64Attribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "The ID of the password type web script.",
 			},
 			"launcherconnectassecretid": schema.Int64Attribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "The ID of the launcher connect-as secret.",
 			},
 			"checkoutintervalminutes": schema.Int64Attribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "The checkout interval in minutes.",
 			},
 			"active": schema.BoolAttribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "Whether the secret is active.",
 			},
 			"checkedout": schema.BoolAttribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "Whether the secret is checked out.",
 			},
 			"checkoutenabled": schema.BoolAttribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "Whether checkout is enabled for the secret.",
 			},
 			"autochangenabled": schema.BoolAttribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "Whether auto-change is enabled for the secret.",
 			},
 
@@ -278,93 +293,117 @@ func (r *TSSSecretResource) Schema(ctx context.Context, req resource.SchemaReque
 
 			"checkoutchangepasswordenabled": schema.BoolAttribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "Whether checkout change password is enabled.",
 			},
 			"delayindexing": schema.BoolAttribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "Whether delay indexing is enabled.",
 			},
 			"enableinheritpermissions": schema.BoolAttribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "Whether inherit permissions is enabled.",
 			},
 			"enableinheritsecretpolicy": schema.BoolAttribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "Whether inherit secret policy is enabled.",
 			},
 			"proxyenabled": schema.BoolAttribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "Whether proxy is enabled.",
 			},
 			"requirescomment": schema.BoolAttribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "Whether a comment is required.",
 			},
 			"sessionrecordingenabled": schema.BoolAttribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "Whether session recording is enabled.",
 			},
 			"weblauncherrequiresincognitomode": schema.BoolAttribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "Whether the web launcher requires incognito mode.",
 			},
 		},
 		Blocks: map[string]schema.Block{
 			"fields": schema.ListNestedBlock{
-				Description: "Fields of the secret.",
+				Description: "List of fields for the secret.",
 				NestedObject: schema.NestedBlockObject{
 					Attributes: map[string]schema.Attribute{
-						"fieldid": schema.Int64Attribute{
-							Optional: true,
-						},
-						"fileattachmentid": schema.Int64Attribute{
-							Optional: true,
-						},
 						"fieldname": schema.StringAttribute{
-							Required: true,
-						},
-						"slug": schema.StringAttribute{
-							Optional: true,
-						},
-						"fielddescription": schema.StringAttribute{
-							Optional: true,
-						},
-						"filename": schema.StringAttribute{
 							Optional: true,
 						},
 						"itemvalue": schema.StringAttribute{
-							Required: true,
+							Optional: true,
+						},
+						"itemid": schema.Int64Attribute{
+							Optional: true,
+							Computed: true,
+						},
+						"fieldid": schema.Int64Attribute{
+							Optional: true,
+							Computed: true,
+						},
+						"fileattachmentid": schema.Int64Attribute{
+							Optional: true,
+							Computed: true,
+						},
+						"slug": schema.StringAttribute{
+							Optional: true,
+							Computed: true,
+						},
+						"fielddescription": schema.StringAttribute{
+							Optional: true,
+							Computed: true,
+						},
+						"filename": schema.StringAttribute{
+							Optional: true,
+							Computed: true,
 						},
 						"isfile": schema.BoolAttribute{
 							Optional: true,
+							Computed: true,
 						},
 						"isnotes": schema.BoolAttribute{
 							Optional: true,
+							Computed: true,
 						},
 						"ispassword": schema.BoolAttribute{
 							Optional: true,
+							Computed: true,
 						},
 						"islist": schema.BoolAttribute{
 							Optional: true,
+							Computed: true,
 						},
 						"listtype": schema.StringAttribute{
 							Optional: true,
+							Computed: true,
 						},
 					},
 				},
 			},
-			"sshkeyargs": schema.SetNestedBlock{
-				NestedObject: schema.NestedBlockObject{
-					Attributes: map[string]schema.Attribute{
-						"generatepassphrase": schema.BoolAttribute{
-							Required: true,
-						},
-						"generatesshkey": schema.BoolAttribute{
-							Required: true,
-						},
+			"sshkeyargs": schema.SingleNestedBlock{
+				Description: "SSH key generation arguments.",
+				Attributes: map[string]schema.Attribute{
+					"generatepassphrase": schema.BoolAttribute{
+						Optional:    true,
+						Computed:    true,
+						Description: "Whether to generate a passphrase for the SSH key.",
+					},
+					"generatesshkeys": schema.BoolAttribute{
+						Optional:    true,
+						Computed:    true,
+						Description: "Whether to generate SSH keys.",
 					},
 				},
-				Description: "SSH key arguments for the secret",
 			},
 		},
 	}
@@ -394,23 +433,44 @@ func (r *TSSSecretResource) Read(ctx context.Context, req resource.ReadRequest, 
 	}
 
 	// Retrieve the secret
-	secret, err := client.Secret(int(state.ID.ValueInt64()))
-	if err != nil {
-		resp.Diagnostics.AddError("Secret Retrieval Error", fmt.Sprintf("Failed to retrieve secret: %s", err))
+	newState, readDiags := r.readSecretByID(ctx, int(state.ID.ValueInt64()), client)
+	resp.Diagnostics.Append(readDiags...)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// Update the state with the retrieved secret
-	state.Name = types.StringValue(secret.Name)
-	state.FolderID = types.StringValue(strconv.Itoa(secret.FolderID))                 // Convert int to string
-	state.SiteID = types.StringValue(strconv.Itoa(secret.SiteID))                     // Convert int to string
-	state.SecretTemplateID = types.StringValue(strconv.Itoa(secret.SecretTemplateID)) // Convert int to string
-	state.Active = types.BoolValue(secret.Active)
-
 	// Set the state
-	diags = resp.State.Set(ctx, &state)
+	diags = resp.State.Set(ctx, newState)
 	resp.Diagnostics.Append(diags...)
 }
+
+func (r *TSSSecretResource) readSecretByID(ctx context.Context, id int, client *server.Server) (*SecretResourceState, diag.Diagnostics) {
+	// Create the server client
+	client, err := server.New(*r.clientConfig)
+	if err != nil {
+		return nil, diag.Diagnostics{
+			diag.NewErrorDiagnostic("Configuration Error", fmt.Sprintf("Failed to create server client: %s", err)),
+		}
+	}
+
+	// Retrieve the secret
+	secret, err := client.Secret(id)
+	if err != nil {
+		return nil, diag.Diagnostics{
+			diag.NewErrorDiagnostic("Secret Retrieval Error", fmt.Sprintf("Failed to retrieve secret: %s", err)),
+		}
+	}
+
+	state, err := flattenSecret(secret)
+	if err != nil {
+		return nil, diag.Diagnostics{
+			diag.NewErrorDiagnostic("State Error", fmt.Sprintf("Failed to flatten secret: %s", err)),
+		}
+	}
+
+	return state, nil
+}
+
 func (r *TSSSecretResource) getSecretData(ctx context.Context, state *SecretResourceState, client *server.Server) (*server.Secret, error) {
 	// Convert string attributes to integers
 	folderID, err := stringToInt(state.FolderID)
@@ -526,6 +586,63 @@ func (r *TSSSecretResource) getSecretData(ctx context.Context, state *SecretReso
 	}
 
 	return secret, nil
+}
+
+func flattenSecret(secret *server.Secret) (*SecretResourceState, error) {
+	var fields []SecretField
+
+	for _, f := range secret.Fields {
+		fields = append(fields, SecretField{
+			FieldName:        types.StringValue(f.FieldName),
+			ItemValue:        types.StringValue(f.ItemValue),
+			ItemID:           types.Int64Value(int64(f.ItemID)),
+			FieldID:          types.Int64Value(int64(f.FieldID)),
+			FileAttachmentID: types.Int64Value(int64(f.FileAttachmentID)),
+			Slug:             types.StringValue(f.Slug),
+			FieldDescription: types.StringValue(f.FieldDescription),
+			Filename:         types.StringValue(f.Filename),
+			IsFile:           types.BoolValue(f.IsFile),
+			IsNotes:          types.BoolValue(f.IsNotes),
+			IsPassword:       types.BoolValue(f.IsPassword),
+		})
+	}
+
+	state := &SecretResourceState{
+		Name:             types.StringValue(secret.Name),
+		ID:               types.Int64Value(int64(secret.ID)),
+		FolderID:         types.StringValue(strconv.Itoa(secret.FolderID)),
+		SiteID:           types.StringValue(strconv.Itoa(secret.SiteID)),
+		SecretTemplateID: types.StringValue(strconv.Itoa(secret.SecretTemplateID)),
+		Fields:           fields,
+		Active:           types.BoolValue(secret.Active),
+	}
+
+	// Optional fields
+	if secret.SecretPolicyID != 0 {
+		state.SecretPolicyID = types.Int64Value(int64(secret.SecretPolicyID))
+	}
+	if secret.PasswordTypeWebScriptID != 0 {
+		state.PasswordTypeWebScriptID = types.Int64Value(int64(secret.PasswordTypeWebScriptID))
+	}
+	if secret.LauncherConnectAsSecretID != 0 {
+		state.LauncherConnectAsSecretID = types.Int64Value(int64(secret.LauncherConnectAsSecretID))
+	}
+	if secret.CheckOutIntervalMinutes != 0 {
+		state.CheckOutIntervalMinutes = types.Int64Value(int64(secret.CheckOutIntervalMinutes))
+	}
+	state.CheckedOut = types.BoolValue(secret.CheckedOut)
+	state.CheckOutEnabled = types.BoolValue(secret.CheckOutEnabled)
+	state.AutoChangeEnabled = types.BoolValue(secret.AutoChangeEnabled)
+	state.CheckOutChangePasswordEnabled = types.BoolValue(secret.CheckOutChangePasswordEnabled)
+	state.DelayIndexing = types.BoolValue(secret.DelayIndexing)
+	state.EnableInheritPermissions = types.BoolValue(secret.EnableInheritPermissions)
+	state.EnableInheritSecretPolicy = types.BoolValue(secret.EnableInheritSecretPolicy)
+	state.ProxyEnabled = types.BoolValue(secret.ProxyEnabled)
+	state.RequiresComment = types.BoolValue(secret.RequiresComment)
+	state.SessionRecordingEnabled = types.BoolValue(secret.SessionRecordingEnabled)
+	state.WebLauncherRequiresIncognitoMode = types.BoolValue(secret.WebLauncherRequiresIncognitoMode)
+
+	return state, nil
 }
 
 // Helper function to convert string to int
