@@ -33,10 +33,6 @@ func (d *TSSSecretsDataSource) Schema(ctx context.Context, req datasource.Schema
 				Required:    true,
 				Description: "The field to extract from the secrets",
 			},
-			"ephemeral": schema.BoolAttribute{
-				Optional:    true,
-				Description: "If true, the secret values will not be saved in the Terraform state file.",
-			},
 			"secrets": schema.ListNestedAttribute{
 				Computed:    true,
 				Description: "A list of secrets with their field values",
@@ -59,8 +55,13 @@ func (d *TSSSecretsDataSource) Schema(ctx context.Context, req datasource.Schema
 }
 
 // Configure initializes the data source with the provider configuration
-// Configure initializes the data source with the provider configuration
 func (d *TSSSecretsDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		// IMPORTANT: This method is called MULTIPLE times. An initial call might not have configured the Provider yet, so we need
+		// to handle this gracefully. It will eventually be called with a configured provider.
+		return
+	}
+
 	// Log the received ProviderData
 	fmt.Printf("DEBUG: ProviderData received in Configure: %+v\n", req.ProviderData)
 
@@ -68,7 +69,6 @@ func (d *TSSSecretsDataSource) Configure(ctx context.Context, req datasource.Con
 	config, ok := req.ProviderData.(*server.Configuration)
 	if !ok {
 		resp.Diagnostics.AddError("Configuration Error", "Failed to retrieve provider configuration")
-		fmt.Println("ERROR: ProviderData is nil or not of type *server.Configuration")
 		return
 	}
 
@@ -82,10 +82,9 @@ func (d *TSSSecretsDataSource) Configure(ctx context.Context, req datasource.Con
 
 func (d *TSSSecretsDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var state struct {
-		IDs       []types.Int64 `tfsdk:"ids"`
-		Field     types.String  `tfsdk:"field"`
-		Ephemeral types.Bool    `tfsdk:"ephemeral"`
-		Secrets   []struct {
+		IDs     []types.Int64 `tfsdk:"ids"`
+		Field   types.String  `tfsdk:"field"`
+		Secrets []struct {
 			ID    types.Int64  `tfsdk:"id"`
 			Value types.String `tfsdk:"value"`
 		} `tfsdk:"secrets"`
@@ -120,6 +119,8 @@ func (d *TSSSecretsDataSource) Read(ctx context.Context, req datasource.ReadRequ
 	for _, id := range state.IDs {
 		secretID := int(id.ValueInt64())
 
+		fmt.Printf("[DEBUG] getting secret with id %d", secretID)
+
 		// Fetch the secret
 		secret, err := secretsClient.Secret(secretID)
 		if err != nil {
@@ -130,6 +131,8 @@ func (d *TSSSecretsDataSource) Read(ctx context.Context, req datasource.ReadRequ
 		// Get the field name dynamically
 		fieldName := state.Field.ValueString()
 
+		fmt.Printf("[DEBUG] using '%s' field of secret with id %d", fieldName, secretID)
+
 		// Extract the field value
 		fieldValue, ok := secret.Field(fieldName)
 		if !ok {
@@ -137,27 +140,14 @@ func (d *TSSSecretsDataSource) Read(ctx context.Context, req datasource.ReadRequ
 			continue
 		}
 
-		// Check if the value should be ephemeral
-		if state.Ephemeral.ValueBool() {
-			// Do not save the secret value in the state
-			resp.Diagnostics.AddWarning("Ephemeral Value", fmt.Sprintf("The value for secret ID %d is marked as ephemeral and will not be saved in the Terraform state.", secretID))
-			results = append(results, struct {
-				ID    types.Int64  `tfsdk:"id"`
-				Value types.String `tfsdk:"value"`
-			}{
-				ID:    types.Int64Value(int64(secretID)),
-				Value: types.StringNull(), // Mark the value as null
-			})
-		} else {
-			// Save the secret value in the state
-			results = append(results, struct {
-				ID    types.Int64  `tfsdk:"id"`
-				Value types.String `tfsdk:"value"`
-			}{
-				ID:    types.Int64Value(int64(secretID)),
-				Value: types.StringValue(fieldValue),
-			})
-		}
+		// Save the secret value in the state
+		results = append(results, struct {
+			ID    types.Int64  `tfsdk:"id"`
+			Value types.String `tfsdk:"value"`
+		}{
+			ID:    types.Int64Value(int64(secretID)),
+			Value: types.StringValue(fieldValue),
+		})
 	}
 
 	// Set the state

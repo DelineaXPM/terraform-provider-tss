@@ -120,12 +120,16 @@ func (r *TSSSecretResource) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 
+	fmt.Printf("[DEBUG] creating secret with name %s", newSecret.Name)
+
 	// Use the client to create the secret
 	createdSecret, err := client.CreateSecret(*newSecret)
 	if err != nil {
 		resp.Diagnostics.AddError("Secret Creation Error", fmt.Sprintf("Failed to create secret: %s", err))
 		return
 	}
+
+	fmt.Printf("Secret is Created successfully...!")
 
 	//Refresh state
 	newState, readDiags := r.readSecretByID(ctx, createdSecret.ID, client)
@@ -175,11 +179,14 @@ func (r *TSSSecretResource) Update(ctx context.Context, req resource.UpdateReque
 
 	// Update the secret
 	updatedSecret.ID = int(state.ID.ValueInt64())
+	fmt.Printf("[DEBUG] updating secret with id %d", updatedSecret.ID)
 	_, err = client.UpdateSecret(*updatedSecret)
 	if err != nil {
 		resp.Diagnostics.AddError("Secret Update Error", fmt.Sprintf("Failed to update secret: %s", err))
 		return
 	}
+
+	fmt.Printf("Secret is Updated successfully...!")
 
 	//Refresh state
 	newState, readDiags := r.readSecretByID(ctx, updatedSecret.ID, client)
@@ -210,6 +217,8 @@ func (r *TSSSecretResource) Delete(ctx context.Context, req resource.DeleteReque
 		return
 	}
 
+	fmt.Printf("[DEBUG] deleting secret with id %d", int(state.ID.ValueInt64()))
+
 	// Create the server client
 	client, err := server.New(*r.clientConfig)
 	if err != nil {
@@ -223,6 +232,8 @@ func (r *TSSSecretResource) Delete(ctx context.Context, req resource.DeleteReque
 		resp.Diagnostics.AddError("Secret Deletion Error", fmt.Sprintf("Failed to delete secret: %s", err))
 		return
 	}
+
+	fmt.Printf("Secret is Deleted successfully...!")
 }
 
 // Schema defines the schema for the resource
@@ -424,6 +435,8 @@ func (r *TSSSecretResource) Read(ctx context.Context, req resource.ReadRequest, 
 		resp.Diagnostics.AddError("Client Error", "The server client is not configured")
 		return
 	}
+
+	fmt.Printf("[DEBUG] getting secret with id %d", int(state.ID.ValueInt64()))
 
 	// Create the server client
 	client, err := server.New(*r.clientConfig)
