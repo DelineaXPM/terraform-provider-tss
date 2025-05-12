@@ -9,7 +9,7 @@ require (
 	golang.org/x/crypto v0.33.0
 )
 
-require github.com/hashicorp/terraform-plugin-log v0.9.0
+require github.com/hashicorp/terraform-plugin-log v0.9.0 // indirect
 
 require (
 	github.com/fatih/color v1.16.0 // indirect

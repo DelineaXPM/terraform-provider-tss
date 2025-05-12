@@ -2,16 +2,15 @@ package delinea
 
 import (
 	"context"
-	"fmt"
-	"os"
+	"log"
 
 	"github.com/DelineaXPM/tss-sdk-go/v2/server"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/ephemeral"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 // Define the provider structure
@@ -25,10 +24,14 @@ type TSSProviderModel struct {
 	Domain    types.String `tfsdk:"domain"`
 }
 
+// Ensure the provider implements the ProviderWithEphemeralResources interface
+var _ provider.ProviderWithEphemeralResources = (*TSSProvider)(nil)
+
 // Metadata returns the provider type name
 func (p *TSSProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
 	resp.TypeName = "tss"
-	tflog.Debug(ctx, "Metadata function called, TypeName set to 'tss'")
+	resp.Version = "2.0.10"
+	log.Print("Metadata function called, TypeName set to 'tss'")
 }
 
 // Schema defines the provider-level schema
@@ -54,7 +57,7 @@ func (p *TSSProvider) Schema(ctx context.Context, req provider.SchemaRequest, re
 			},
 		},
 	}
-	tflog.Debug(ctx, "Schema function called, provider schema defined")
+	log.Print("Schema function called, provider schema defined")
 }
 
 // Configure initializes the provider with the given configuration
@@ -62,21 +65,21 @@ func (p *TSSProvider) Configure(ctx context.Context, req provider.ConfigureReque
 	var config TSSProviderModel
 
 	// Log the start of the Configure method
-	fmt.Fprintln(os.Stderr, "Starting Configure method")
+	log.Print("Starting Configure method")
 
 	// Read configuration values into the config struct
 	diags := req.Config.Get(ctx, &config)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		resp.Diagnostics.AddError("Configuration Error", "Failed to read provider configuration")
-		fmt.Fprintln(os.Stderr, "Failed to read provider configuration", map[string]interface{}{
+		log.Print("Failed to read provider configuration", map[string]interface{}{
 			"diagnostics": resp.Diagnostics,
 		})
 		return
 	}
 
 	// Log the configuration values
-	fmt.Fprintln(os.Stderr, "Provider configuration values retrieved", map[string]interface{}{
+	log.Print("Provider configuration values retrieved", map[string]interface{}{
 		"server_url": config.ServerURL.ValueString(),
 		"username":   config.Username.ValueString(),
 	})
@@ -92,25 +95,26 @@ func (p *TSSProvider) Configure(ctx context.Context, req provider.ConfigureReque
 	}
 
 	// Log the created server configuration
-	fmt.Fprintln(os.Stderr, "Server configuration created", map[string]interface{}{
+	log.Print("Server configuration created", map[string]interface{}{
 		"server_url": serverConfig.ServerURL,
 		"username":   serverConfig.Credentials.Username,
 	})
 
 	// Pass the server configuration to resources and data sources
 	if serverConfig == nil {
-		fmt.Fprintln(os.Stderr, "Server configuration is nil")
+		log.Print("Server configuration is nil")
 		resp.Diagnostics.AddError("Configuration Error", "Server configuration is nil")
 		return
 	}
 	resp.DataSourceData = serverConfig
 	resp.ResourceData = serverConfig
-	fmt.Fprintln(os.Stderr, "Server configuration passed to DataSourceData and ResourceData")
+	resp.EphemeralResourceData = serverConfig
+	log.Print("Server configuration passed to DataSourceData and ResourceData")
 }
 
 // DataSources returns the data sources supported by the provider
 func (p *TSSProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
-	tflog.Debug(ctx, "DataSources function called")
+	log.Print("DataSources function called")
 	return []func() datasource.DataSource{
 		func() datasource.DataSource { return &TSSSecretDataSource{} },
 		func() datasource.DataSource { return &TSSSecretsDataSource{} },
@@ -119,14 +123,23 @@ func (p *TSSProvider) DataSources(ctx context.Context) []func() datasource.DataS
 
 // Resources returns the resources supported by the provider
 func (p *TSSProvider) Resources(ctx context.Context) []func() resource.Resource {
-	tflog.Debug(ctx, "Resources function called")
+	log.Print("Resources function called")
 	return []func() resource.Resource{
 		func() resource.Resource { return &TSSSecretResource{} },
+		func() resource.Resource { return &PrintSecretResource{} },
+	}
+}
+
+func (p *TSSProvider) EphemeralResources(_ context.Context) []func() ephemeral.EphemeralResource {
+	log.Print("EphemeralResources function called")
+	return []func() ephemeral.EphemeralResource{
+		func() ephemeral.EphemeralResource {
+			return &TSSSecretEphemeralResource{}
+		},
 	}
 }
 
 // New returns a new instance of the provider
 func New() provider.Provider {
-	fmt.Fprintln(os.Stderr, "DEBUG: New provider instance created")
 	return &TSSProvider{}
 }
