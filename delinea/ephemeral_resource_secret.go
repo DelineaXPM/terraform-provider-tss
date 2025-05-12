@@ -20,12 +20,8 @@ type TSSSecretEphemeralResource struct {
 }
 
 func (r *TSSSecretEphemeralResource) Metadata(ctx context.Context, req ephemeral.MetadataRequest, resp *ephemeral.MetadataResponse) {
-	resp.TypeName = "tss_ephemeral_resource_secret"
+	resp.TypeName = "tss_secret"
 	log.Print("DEBUG: EphemeralResources_Log Metadata")
-}
-
-func (r *TSSSecretEphemeralResource) Name() string {
-	return "tss_ephemeral_resource_secret"
 }
 
 // Define the model for your resource state
@@ -56,7 +52,6 @@ func (r *TSSSecretEphemeralResource) Schema(ctx context.Context, req ephemeral.S
 			},
 			"secret_value": schema.StringAttribute{
 				Computed:    true,
-				Sensitive:   true,
 				Description: "The value of the requested field from the secret.",
 			},
 		},
