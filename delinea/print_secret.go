@@ -2,7 +2,6 @@ package delinea
 
 import (
 	"context"
-	"log"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -36,7 +35,6 @@ func (r *PrintSecretResource) Schema(ctx context.Context, req resource.SchemaReq
 			"secret": schema.StringAttribute{
 				Required:    true,
 				Description: "The secret value to print.",
-				Sensitive:   true,
 				WriteOnly:   true,
 			},
 		},
@@ -53,8 +51,8 @@ func (r *PrintSecretResource) Create(ctx context.Context, req resource.CreateReq
 		return
 	}
 
-	// Log the secret — in real use, be careful about logging secrets
-	log.Printf("[DEBUG] Received secret: %s", data.Secret.ValueString())
+	//For the DEBUG environment, uncomment this line to unit test whether the secret value is being fetched successfully.
+	//log.Printf("[DEBUG] Received secret: %s", data.Secret.ValueString())
 
 	// Set state
 	diags = resp.State.Set(ctx, data)
