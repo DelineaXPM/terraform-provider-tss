@@ -63,7 +63,6 @@ func (d *TSSSecretDataSource) Configure(ctx context.Context, req datasource.Conf
 	fmt.Printf("DEBUG: Successfully retrieved provider configuration: %+v\n", config)
 
 	d.clientConfig = config
-	fmt.Println("DEBUG: Provider configuration stored in clientConfig")
 }
 
 // Read retrieves the data for the data source

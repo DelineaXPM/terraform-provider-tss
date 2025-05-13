@@ -21,7 +21,6 @@ type TSSSecretEphemeralResource struct {
 
 func (r *TSSSecretEphemeralResource) Metadata(ctx context.Context, req ephemeral.MetadataRequest, resp *ephemeral.MetadataResponse) {
 	resp.TypeName = "tss_secret"
-	log.Print("DEBUG: EphemeralResources_Log Metadata")
 }
 
 // Define the model for your resource state
@@ -39,7 +38,6 @@ type TSSSecretPrivateData struct {
 }
 
 func (r *TSSSecretEphemeralResource) Schema(ctx context.Context, req ephemeral.SchemaRequest, resp *ephemeral.SchemaResponse) {
-	log.Print("DEBUG: EphemeralResources_Log Schema")
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"secret_id": schema.StringAttribute{
@@ -59,7 +57,6 @@ func (r *TSSSecretEphemeralResource) Schema(ctx context.Context, req ephemeral.S
 }
 
 func (r *TSSSecretEphemeralResource) Open(ctx context.Context, req ephemeral.OpenRequest, resp *ephemeral.OpenResponse) {
-	log.Print("Open function called")
 	// Create a model to hold the input configuration
 	var data TSSSecretEphemeralResourceModel
 
@@ -89,12 +86,16 @@ func (r *TSSSecretEphemeralResource) Open(ctx context.Context, req ephemeral.Ope
 		return
 	}
 
+	log.Printf("[DEBUG] getting secret with id %d", secretID)
+
 	// Fetch the secret from the server using Delinea SDK
 	secret, err := client.Secret(secretID)
 	if err != nil {
 		resp.Diagnostics.AddError("Secret Fetch Error", err.Error())
 		return
 	}
+
+	log.Printf("[DEBUG] using '%s' field of secret with id %d", data.Field.ValueString(), secretID)
 
 	// Extract the requested field value (assuming Field() method is available)
 	fieldValue, ok := secret.Field(data.Field.ValueString())
@@ -119,12 +120,9 @@ func (r *TSSSecretEphemeralResource) Open(ctx context.Context, req ephemeral.Ope
 		SecretValue: data.SecretValue.ValueString(),
 	})
 	resp.Private.SetKey(ctx, "tss_secret_data", privateData)
-
-	log.Print("DEBUG: Values: " + data.SecretValue.ValueString())
 }
 
 func (r *TSSSecretEphemeralResource) Renew(ctx context.Context, req ephemeral.RenewRequest, resp *ephemeral.RenewResponse) {
-	log.Print("Renew function called")
 	// Retrieve the private data that was stored during Open
 	privateBytes, _ := req.Private.GetKey(ctx, "tss_secret_data")
 	if privateBytes == nil {
@@ -159,12 +157,16 @@ func (r *TSSSecretEphemeralResource) Renew(ctx context.Context, req ephemeral.Re
 		return
 	}
 
+	log.Printf("[DEBUG] getting secret with id %d to renew data", secretID)
+
 	// Fetch the secret from the server
 	secret, err := client.Secret(secretID)
 	if err != nil {
 		resp.Diagnostics.AddError("Secret Fetch Error", err.Error())
 		return
 	}
+
+	log.Printf("[DEBUG] using '%s' field of secret with id %d to renew data", privateData.Field, secretID)
 
 	// Extract the requested field value
 	fieldValue, ok := secret.Field(privateData.Field)
@@ -192,11 +194,14 @@ func (r *TSSSecretEphemeralResource) Configure(ctx context.Context, req ephemera
 	if req.ProviderData == nil {
 		return
 	}
-	log.Print("DEBUG: EphemeralResources_Log Config")
+	log.Printf("DEBUG: ProviderData received in Configure: %+v\n", req.ProviderData)
 	client, ok := req.ProviderData.(*server.Configuration)
 	if !ok {
 		resp.Diagnostics.AddError("Invalid Provider Data", "Expected *ExampleClient")
 		return
 	}
+
+	log.Printf("DEBUG: Successfully retrieved provider configuration: %+v\n", client)
+
 	r.clientConfig = client
 }
