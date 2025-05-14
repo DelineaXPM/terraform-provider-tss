@@ -130,6 +130,9 @@ func (p *TSSProvider) EphemeralResources(_ context.Context) []func() ephemeral.E
 		func() ephemeral.EphemeralResource {
 			return &TSSSecretEphemeralResource{}
 		},
+		func() ephemeral.EphemeralResource {
+			return &TSSSecretsEphemeralResource{}
+		},
 	}
 }
 

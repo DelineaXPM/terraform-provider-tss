@@ -66,6 +66,11 @@ func (r *TSSSecretEphemeralResource) Open(ctx context.Context, req ephemeral.Ope
 		return
 	}
 
+	if r.clientConfig == nil {
+		resp.Diagnostics.AddError("Provider not configured", "Cannot fetch secrets because the provider is not configured.")
+		return
+	}
+
 	// Check for required fields in the model (secret_id and field)
 	if data.SecretID.IsNull() || data.Field.IsNull() {
 		resp.Diagnostics.AddError("Missing Required Field", "Both secret_id and field are required")
