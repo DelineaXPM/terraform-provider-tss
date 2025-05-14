@@ -181,3 +181,24 @@ Usage (For Windows)
 > terraform_apply.bat
 > terraform_destroy.bat
 ```
+
+## Ephemeral Resource
+
+This ephemeral resource fetches secret values from Delinea Secret Server at runtime without storing them in Terraform state. It is useful for handling sensitive secret data dynamically without persisting them. An ephemeral resource can be used as shown below.
+
+Get Secret By ID:
+
+```hcl
+ephemeral "tss_secret" "my_password" {
+  id    = var.tss_secret_id
+  field = "password"
+}
+```
+Get Secrets By ID:
+
+```hcl
+ephemeral "tss_secrets" "my_passwords" {
+  ids    = var.tss_secret_ids
+  field = "password"
+}
+```
