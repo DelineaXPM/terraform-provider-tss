@@ -23,7 +23,7 @@ Terraform 0.13 uses a different file system layout for 3rd party providers. More
 └───terraform.delinea.com
     DelineaXPM
         └───tss
-            └───2.0.10
+            └───2.1.0
                 └───windows_amd64
 ```
 
@@ -34,7 +34,7 @@ Terraform 0.13 uses a different file system layout for 3rd party providers. More
 └───terraform.delinea.com
     DelineaXPM
         └───tss
-            └───2.0.10
+            └───2.1.0
                 ├───linux_amd64
 ```
 
@@ -81,7 +81,7 @@ tss_password   = "Passw0rd."
 tss_server_url = "https://example/SecretServer"
 tss_secret_name = "Windows Account"
 tss_secret_siteid = 1
-tss_secret_folderid = 0
+tss_secret_folderid = -1
 tss_secret_templateid = 6003
 fields = [
   {
