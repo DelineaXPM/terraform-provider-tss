@@ -45,6 +45,7 @@ output "usernames" {
     id    = secret.id
     value = secret.value
   }]
+  sensitive =true
 }
 
 output "passwords" {
@@ -52,4 +53,5 @@ output "passwords" {
     id    = secret.id
     value = secret.value
   }]
+  sensitive =true
 }

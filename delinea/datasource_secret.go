@@ -25,7 +25,7 @@ func (d *TSSSecretDataSource) Metadata(ctx context.Context, req datasource.Metad
 func (d *TSSSecretDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"secret_id": schema.StringAttribute{
+			"id": schema.StringAttribute{
 				Required:    true,
 				Description: "The ID of the secret to retrieve.",
 			},
@@ -33,7 +33,7 @@ func (d *TSSSecretDataSource) Schema(ctx context.Context, req datasource.SchemaR
 				Required:    true,
 				Description: "The field to extract from the secret.",
 			},
-			"secret_value": schema.StringAttribute{
+			"value": schema.StringAttribute{
 				Computed:    true,
 				Sensitive:   true,
 				Description: "The value of the requested field from the secret.",
@@ -69,9 +69,9 @@ func (d *TSSSecretDataSource) Configure(ctx context.Context, req datasource.Conf
 func (d *TSSSecretDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	// Define the state structure
 	var state struct {
-		SecretID    types.String `tfsdk:"secret_id"`
+		SecretID    types.String `tfsdk:"id"`
 		Field       types.String `tfsdk:"field"`
-		SecretValue types.String `tfsdk:"secret_value"`
+		SecretValue types.String `tfsdk:"value"`
 	}
 
 	// Read the configuration from the request

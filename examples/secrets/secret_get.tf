@@ -42,8 +42,10 @@ data "tss_secret" "my_password" {
 
 output "username" {
   value     = data.tss_secret.my_username.value
+  sensitive =true
 }
 
 output "password" {
   value     = data.tss_secret.my_password.value
+  sensitive =true
 }

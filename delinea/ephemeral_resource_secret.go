@@ -25,22 +25,22 @@ func (r *TSSSecretEphemeralResource) Metadata(ctx context.Context, req ephemeral
 
 // Define the model for your resource state
 type TSSSecretEphemeralResourceModel struct {
-	SecretID    types.String `tfsdk:"secret_id"`
+	SecretID    types.String `tfsdk:"id"`
 	Field       types.String `tfsdk:"field"`
-	SecretValue types.String `tfsdk:"secret_value"`
+	SecretValue types.String `tfsdk:"value"`
 }
 
 // Define private data structure (optional)
 type TSSSecretPrivateData struct {
-	SecretID    string `json:"secret_id"`
+	SecretID    string `json:"id"`
 	Field       string `json:"field"`
-	SecretValue string `json:"secret_value"`
+	SecretValue string `json:"value"`
 }
 
 func (r *TSSSecretEphemeralResource) Schema(ctx context.Context, req ephemeral.SchemaRequest, resp *ephemeral.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"secret_id": schema.StringAttribute{
+			"id": schema.StringAttribute{
 				Required:    true,
 				Description: "The ID of the secret to retrieve.",
 			},
@@ -48,7 +48,7 @@ func (r *TSSSecretEphemeralResource) Schema(ctx context.Context, req ephemeral.S
 				Required:    true,
 				Description: "The field to extract from the secret.",
 			},
-			"secret_value": schema.StringAttribute{
+			"value": schema.StringAttribute{
 				Computed:    true,
 				Description: "The value of the requested field from the secret.",
 			},
