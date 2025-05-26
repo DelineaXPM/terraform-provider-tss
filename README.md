@@ -185,6 +185,7 @@ Usage (For Windows)
 ## Ephemeral Resource
 
 This ephemeral resource fetches secret values from Delinea Secret Server at runtime without storing them in Terraform state. It is useful for handling sensitive secret data dynamically without persisting them. An ephemeral resource can be used as shown below.
+To support the Ephemeral Resource miniumum version of Terraform must be 1.10.5 and above.
 
 Get Secret By ID:
 
