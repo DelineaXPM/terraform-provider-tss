@@ -1,63 +1,131 @@
 package delinea
 
 import (
+	"context"
 	"fmt"
-	"log"
 	"strconv"
 
 	"github.com/DelineaXPM/tss-sdk-go/v2/server"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-func dataSourceSecretRead(d *schema.ResourceData, meta interface{}) error {
-	id := d.Get("id").(int)
-	field := d.Get("field").(string)
-	secrets, err := server.New(meta.(server.Configuration))
-
-	if err != nil {
-		log.Printf("[DEBUG] configuration error: %s", err)
-	}
-	log.Printf("[DEBUG] getting secret with id %d", id)
-
-	secret, err := secrets.Secret(id)
-
-	if err != nil {
-		log.Print("[DEBUG] unable to get secret", err)
-		return err
-	}
-
-	d.SetId(strconv.Itoa(secret.ID))
-
-	log.Printf("[DEBUG] using '%s' field of secret with id %d", field, id)
-
-	if value, ok := secret.Field(field); ok {
-		d.Set("value", value)
-		return nil
-	}
-	return fmt.Errorf("the secret does not contain a '%s' field", field)
+// TSSSecretDataSource defines the data source implementation
+type TSSSecretDataSource struct {
+	clientConfig *server.Configuration // Store the provider configuration
 }
 
-func dataSourceSecret() *schema.Resource {
-	return &schema.Resource{
-		Read: dataSourceSecretRead,
+// Metadata provides the data source type name
+func (d *TSSSecretDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = "tss_secret"
+}
 
-		Schema: map[string]*schema.Schema{
-			"value": {
+// Schema defines the schema for the data source
+func (d *TSSSecretDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				Required:    true,
+				Description: "The ID of the secret to retrieve.",
+			},
+			"field": schema.StringAttribute{
+				Required:    true,
+				Description: "The field to extract from the secret.",
+			},
+			"value": schema.StringAttribute{
 				Computed:    true,
-				Description: "the value of the field of the secret",
 				Sensitive:   true,
-				Type:        schema.TypeString,
-			},
-			"field": {
-				Description: "the field to extract from the secret",
-				Required:    true,
-				Type:        schema.TypeString,
-			},
-			"id": {
-				Description: "the id of the secret",
-				Required:    true,
-				Type:        schema.TypeInt,
+				Description: "The value of the requested field from the secret.",
 			},
 		},
 	}
+}
+
+// Configure initializes the data source with the provider configuration
+func (d *TSSSecretDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		// IMPORTANT: This method is called MULTIPLE times. An initial call might not have configured the Provider yet, so we need
+		// to handle this gracefully. It will eventually be called with a configured provider.
+		return
+	}
+
+	// Log the received ProviderData
+	fmt.Printf("DEBUG: ProviderData received in Configure")
+
+	config, ok := req.ProviderData.(*server.Configuration)
+	if !ok || config == nil {
+		resp.Diagnostics.AddError("Configuration Error", "Failed to retrieve provider configuration")
+		return
+	}
+
+	// Log the successfully retrieved configuration
+	fmt.Printf("DEBUG: Successfully retrieved provider configuration")
+
+	d.clientConfig = config
+}
+
+// Read retrieves the data for the data source
+func (d *TSSSecretDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+	// Define the state structure
+	var state struct {
+		SecretID    types.String `tfsdk:"id"`
+		Field       types.String `tfsdk:"field"`
+		SecretValue types.String `tfsdk:"value"`
+	}
+
+	// Read the configuration from the request
+	diags := req.Config.Get(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Ensure the client configuration is set
+	if d.clientConfig == nil {
+		resp.Diagnostics.AddError("Client Error", "The server client is not configured")
+		return
+	}
+
+	// Create the server client
+	client, err := server.New(*d.clientConfig)
+	if err != nil {
+		resp.Diagnostics.AddError("Configuration Error", fmt.Sprintf("Failed to create server client: %s", err))
+		return
+	}
+
+	// Convert SecretID to int
+	secretID, err := strconv.Atoi(state.SecretID.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError("Invalid Secret ID", "Secret ID must be an integer")
+		return
+	}
+
+	fmt.Printf("[DEBUG] getting secret with id %d", secretID)
+
+	// Fetch the secret
+	secret, err := client.Secret(secretID)
+	if err != nil {
+		resp.Diagnostics.AddError("Secret Fetch Error", fmt.Sprintf("Failed to fetch secret: %s", err))
+		return
+	}
+
+	// Get the field name dynamically
+	fieldName := state.Field.ValueString()
+
+	fmt.Printf("[DEBUG] using '%s' field of secret with id %d", fieldName, secretID)
+
+	// Extract the secret value
+	fieldValue, ok := secret.Field(fieldName)
+	if !ok {
+		resp.Diagnostics.AddError("Field Not Found", fmt.Sprintf("The secret does not contain the field '%s'", fieldName))
+		return
+	}
+
+	// Set the secret value in the state
+	state.SecretValue = types.StringValue(fieldValue)
+
+	// Set the state
+	diags = resp.State.Set(ctx, &state)
+	resp.Diagnostics.Append(diags...)
 }

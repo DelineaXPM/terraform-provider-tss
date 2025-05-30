@@ -23,7 +23,7 @@ Terraform 0.13 uses a different file system layout for 3rd party providers. More
 └───terraform.delinea.com
     DelineaXPM
         └───tss
-            └───2.0.10
+            └───2.1.0
                 └───windows_amd64
 ```
 
@@ -34,7 +34,7 @@ Terraform 0.13 uses a different file system layout for 3rd party providers. More
 └───terraform.delinea.com
     DelineaXPM
         └───tss
-            └───2.0.10
+            └───2.1.0
                 ├───linux_amd64
 ```
 
@@ -81,7 +81,7 @@ tss_password   = "Passw0rd."
 tss_server_url = "https://example/SecretServer"
 tss_secret_name = "Windows Account"
 tss_secret_siteid = 1
-tss_secret_folderid = 0
+tss_secret_folderid = -1
 tss_secret_templateid = 6003
 fields = [
   {
@@ -180,4 +180,26 @@ Usage (For Windows)
 > terraform_init.bat
 > terraform_apply.bat
 > terraform_destroy.bat
+```
+
+## Ephemeral Resource
+
+This ephemeral resource fetches secret values from Delinea Secret Server at runtime without storing them in Terraform state. It is useful for handling sensitive secret data dynamically without persisting them. An ephemeral resource can be used as shown below.
+To support the Ephemeral Resource miniumum version of Terraform must be 1.10.5 and above.
+
+Get Secret By ID:
+
+```hcl
+ephemeral "tss_secret" "my_password" {
+  id    = var.tss_secret_id
+  field = "password"
+}
+```
+Get Secrets By ID:
+
+```hcl
+ephemeral "tss_secrets" "my_passwords" {
+  ids    = var.tss_secret_ids
+  field = "password"
+}
 ```

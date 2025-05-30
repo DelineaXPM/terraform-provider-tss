@@ -1,16 +1,15 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 
 	"github.com/DelineaXPM/terraform-provider-tss/v2/delinea"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/plugin"
+	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 )
 
 func main() {
-
 	if len(os.Args) >= 2 {
 		action := os.Args[1]
 		stateFile := os.Args[2]
@@ -38,9 +37,7 @@ func main() {
 		return
 	}
 
-	plugin.Serve(&plugin.ServeOpts{
-		ProviderFunc: func() *schema.Provider {
-			return delinea.Provider()
-		},
+	providerserver.Serve(context.Background(), delinea.New, providerserver.ServeOpts{
+		Address: "registry.terraform.io/DelineaXPM/tss",
 	})
 }
