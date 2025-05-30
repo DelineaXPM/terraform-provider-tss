@@ -91,12 +91,6 @@ func (p *TSSProvider) Configure(ctx context.Context, req provider.ConfigureReque
 		},
 	}
 
-	// Log the created server configuration
-	log.Printf("Server configuration created", map[string]interface{}{
-		"server_url": serverConfig.ServerURL,
-		"username":   serverConfig.Credentials.Username,
-	})
-
 	// Pass the server configuration to resources and data sources
 	if serverConfig == nil {
 		log.Printf("Server configuration is nil")

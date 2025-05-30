@@ -199,14 +199,14 @@ func (r *TSSSecretEphemeralResource) Configure(ctx context.Context, req ephemera
 	if req.ProviderData == nil {
 		return
 	}
-	log.Printf("DEBUG: ProviderData received in Configure: %+v\n", req.ProviderData)
+	log.Printf("DEBUG: ProviderData received in Configure")
 	client, ok := req.ProviderData.(*server.Configuration)
 	if !ok {
-		resp.Diagnostics.AddError("Invalid Provider Data", "Expected *ExampleClient")
+		resp.Diagnostics.AddError("Invalid Provider Data", "Expected provider data of type *server.Configuration")
 		return
 	}
 
-	log.Printf("DEBUG: Successfully retrieved provider configuration: %+v\n", client)
+	log.Printf("DEBUG: Successfully retrieved provider configuration")
 
 	r.clientConfig = client
 }

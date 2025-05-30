@@ -63,7 +63,7 @@ func (d *TSSSecretsDataSource) Configure(ctx context.Context, req datasource.Con
 	}
 
 	// Log the received ProviderData
-	fmt.Printf("DEBUG: ProviderData received in Configure: %+v\n", req.ProviderData)
+	fmt.Printf("DEBUG: ProviderData received in Configure")
 
 	// Retrieve the provider configuration
 	config, ok := req.ProviderData.(*server.Configuration)
@@ -73,7 +73,7 @@ func (d *TSSSecretsDataSource) Configure(ctx context.Context, req datasource.Con
 	}
 
 	// Log the successfully retrieved configuration
-	fmt.Printf("DEBUG: Successfully retrieved provider configuration: %+v\n", config)
+	fmt.Printf("DEBUG: Successfully retrieved provider configuration")
 
 	// Store the provider configuration in the data source
 	d.clientConfig = config
