@@ -30,28 +30,12 @@ provider "tss" {
   server_url = var.tss_server_url
 }
 
-data "tss_secrets" "my_usernames" {
+ephemeral "tss_secrets" "my_usernames" {
   ids    = var.tss_secret_ids
   field = "username"
 }
 
-data "tss_secrets" "my_passwords" {
+ephemeral "tss_secrets" "my_passwords" {
   ids    = var.tss_secret_ids
   field = "password"
-}
-
-output "usernames" {
-  value = [for secret in data.tss_secrets.my_usernames.secrets : {
-    id    = secret.id
-    value = secret.value
-  }]
-  sensitive =true
-}
-
-output "passwords" {
-  value = [for secret in data.tss_secrets.my_passwords.secrets : {
-    id    = secret.id
-    value = secret.value
-  }]
-  sensitive =true
 }
