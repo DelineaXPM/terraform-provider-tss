@@ -10,6 +10,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -131,11 +133,31 @@ func (r *TSSSecretResource) Create(ctx context.Context, req resource.CreateReque
 
 	fmt.Printf("Secret is Created successfully...!")
 
-	//Refresh state
+	// Refresh state - let Terraform accept the computed values from the server
 	newState, readDiags := r.readSecretByID(ctx, createdSecret.ID, client)
 	resp.Diagnostics.Append(readDiags...)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+
+	// Preserve the SSH key args from the plan since the server doesn't return them
+	if plan.SshKeyArgs != nil {
+		newState.SshKeyArgs = plan.SshKeyArgs
+	}
+
+	// Preserve file attachment information for file fields
+	for i, field := range newState.Fields {
+		if field.IsFile.ValueBool() {
+			// Find the matching field in the plan
+			for _, planField := range plan.Fields {
+				if planField.FieldName.ValueString() == field.FieldName.ValueString() && planField.IsFile.ValueBool() {
+					// Preserve FileAttachmentID and Filename
+					newState.Fields[i].FileAttachmentID = planField.FileAttachmentID
+					newState.Fields[i].Filename = planField.Filename
+					break
+				}
+			}
+		}
 	}
 
 	// Set the state
@@ -171,10 +193,69 @@ func (r *TSSSecretResource) Update(ctx context.Context, req resource.UpdateReque
 	}
 
 	// Get the secret data
-	updatedSecret, err := r.getSecretData(ctx, &plan, client)
+	// During update, we shouldn't send SSH key generation parameters
+	// because the server doesn't support SSH key generation during update
+	updatePlan := plan
+
+	// Check if SSH key generation was requested in the original creation
+	hasSshKeyArgs := false
+	if state.SshKeyArgs != nil &&
+		(state.SshKeyArgs.GenerateSshKeys.ValueBool() ||
+			state.SshKeyArgs.GeneratePassphrase.ValueBool()) {
+		hasSshKeyArgs = true
+	}
+
+	// Don't send SSH key args during update - they're only for creation
+	updatePlan.SshKeyArgs = nil
+
+	updatedSecret, err := r.getSecretData(ctx, &updatePlan, client)
 	if err != nil {
 		resp.Diagnostics.AddError("Secret Data Error", fmt.Sprintf("Failed to prepare secret data: %s", err))
 		return
+	}
+
+	// If we have SSH key fields, preserve the existing values from the current state
+	for i, field := range updatedSecret.Fields {
+		fieldName := field.FieldName
+		if hasSshKeyArgs && (strings.Contains(strings.ToLower(fieldName), "key") ||
+			strings.Contains(strings.ToLower(fieldName), "passphrase")) {
+			// For secrets with SSH keys, preserve the server-generated values
+			for _, stateField := range state.Fields {
+				if strings.EqualFold(stateField.FieldName.ValueString(), fieldName) {
+					// Check if the plan specifically wants to update this field
+					// If not, preserve the existing state value
+					fieldFound := false
+					for _, planField := range plan.Fields {
+						if strings.EqualFold(planField.FieldName.ValueString(), fieldName) {
+							fieldFound = true
+							if planField.ItemValue.IsNull() || planField.ItemValue.ValueString() == "" {
+								// Plan is not updating this field, preserve state
+								updatedSecret.Fields[i].ItemValue = stateField.ItemValue.ValueString()
+								fmt.Printf("[DEBUG] Preserving SSH field %s value during update\n", fieldName)
+							} else {
+								// Plan is updating this field, use new value
+								fmt.Printf("[DEBUG] Updating SSH field %s with new value\n", fieldName)
+							}
+							break
+						}
+					}
+
+					if !fieldFound {
+						// Field not found in plan, preserve state value
+						updatedSecret.Fields[i].ItemValue = stateField.ItemValue.ValueString()
+						fmt.Printf("[DEBUG] Preserving SSH field %s value (not in plan)\n", fieldName)
+					}
+
+					// Also preserve the filename for key fields regardless
+					if !stateField.Filename.IsNull() && stateField.Filename.ValueString() != "" {
+						updatedSecret.Fields[i].Filename = stateField.Filename.ValueString()
+						fmt.Printf("[DEBUG] Preserving filename %s for field %s\n",
+							stateField.Filename.ValueString(), fieldName)
+					}
+					break
+				}
+			}
+		}
 	}
 
 	// Update the secret
@@ -193,6 +274,51 @@ func (r *TSSSecretResource) Update(ctx context.Context, req resource.UpdateReque
 	resp.Diagnostics.Append(readDiags...)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+
+	// Preserve the SSH key args from the plan since the server doesn't return them
+	if plan.SshKeyArgs != nil {
+		newState.SshKeyArgs = plan.SshKeyArgs
+	}
+
+	// Preserve file attachment information for file fields and SSH key fields
+	for i, field := range newState.Fields {
+		fieldName := field.FieldName.ValueString()
+		isSSHKeyField := hasSshKeyArgs && (strings.Contains(strings.ToLower(fieldName), "key") ||
+			strings.Contains(strings.ToLower(fieldName), "passphrase"))
+
+		// Handle both regular file fields and SSH key fields
+		if field.IsFile.ValueBool() || isSSHKeyField {
+			// First check the state (higher priority for existing secrets)
+			for _, stateField := range state.Fields {
+				if stateField.FieldName.ValueString() == fieldName {
+					// Preserve FileAttachmentID and Filename from state
+					if !stateField.FileAttachmentID.IsNull() {
+						newState.Fields[i].FileAttachmentID = stateField.FileAttachmentID
+					}
+					if !stateField.Filename.IsNull() && stateField.Filename.ValueString() != "" {
+						newState.Fields[i].Filename = stateField.Filename
+						fmt.Printf("[DEBUG] Preserved filename %s for field %s from state\n",
+							stateField.Filename.ValueString(), fieldName)
+					}
+					break
+				}
+			}
+
+			// If filename still empty, check plan
+			if newState.Fields[i].Filename.IsNull() || newState.Fields[i].Filename.ValueString() == "" {
+				for _, planField := range plan.Fields {
+					if planField.FieldName.ValueString() == fieldName {
+						if !planField.Filename.IsNull() && planField.Filename.ValueString() != "" {
+							newState.Fields[i].Filename = planField.Filename
+							fmt.Printf("[DEBUG] Preserved filename %s for field %s from plan\n",
+								planField.Filename.ValueString(), fieldName)
+						}
+						break
+					}
+				}
+			}
+		}
 	}
 
 	// Set the state
@@ -352,7 +478,13 @@ func (r *TSSSecretResource) Schema(ctx context.Context, req resource.SchemaReque
 							Optional: true,
 						},
 						"itemvalue": schema.StringAttribute{
-							Optional: true,
+							Optional:    true,
+							Computed:    true,
+							Description: "The value of the field. For SSH key generation, this will be computed by the server.",
+							PlanModifiers: []planmodifier.String{
+								sshKeyFieldPlanModifier{},
+								stringplanmodifier.UseStateForUnknown(),
+							},
 						},
 						"itemid": schema.Int64Attribute{
 							Optional: true,
@@ -452,6 +584,44 @@ func (r *TSSSecretResource) Read(ctx context.Context, req resource.ReadRequest, 
 		return
 	}
 
+	// Preserve the SSH key args from the current state since the server doesn't return them
+	if state.SshKeyArgs != nil {
+		newState.SshKeyArgs = state.SshKeyArgs
+	}
+
+	// Determine if this secret was created with SSH key generation
+	hasSshKeyArgs := false
+	if state.SshKeyArgs != nil &&
+		(state.SshKeyArgs.GenerateSshKeys.ValueBool() ||
+			state.SshKeyArgs.GeneratePassphrase.ValueBool()) {
+		hasSshKeyArgs = true
+	}
+
+	// Preserve file attachment information for file fields and SSH key fields
+	for i, field := range newState.Fields {
+		fieldName := field.FieldName.ValueString()
+		isSSHKeyField := hasSshKeyArgs && (strings.Contains(strings.ToLower(fieldName), "key") ||
+			strings.Contains(strings.ToLower(fieldName), "passphrase"))
+
+		if field.IsFile.ValueBool() || isSSHKeyField {
+			// Find the matching field in the old state
+			for _, oldField := range state.Fields {
+				if oldField.FieldName.ValueString() == fieldName {
+					// Preserve FileAttachmentID and Filename
+					if !oldField.FileAttachmentID.IsNull() {
+						newState.Fields[i].FileAttachmentID = oldField.FileAttachmentID
+					}
+					if !oldField.Filename.IsNull() && oldField.Filename.ValueString() != "" {
+						newState.Fields[i].Filename = oldField.Filename
+						fmt.Printf("[DEBUG] Read: Preserved filename %s for field %s\n",
+							oldField.Filename.ValueString(), fieldName)
+					}
+					break
+				}
+			}
+		}
+	}
+
 	// Set the state
 	diags = resp.State.Set(ctx, newState)
 	resp.Diagnostics.Append(diags...)
@@ -466,7 +636,7 @@ func (r *TSSSecretResource) readSecretByID(ctx context.Context, id int, client *
 		}
 	}
 
-	// Retrieve the secret
+	// Retrieve the secret using the provided client
 	secret, err := client.Secret(id)
 	if err != nil {
 		return nil, diag.Diagnostics{
@@ -519,13 +689,31 @@ func (r *TSSSecretResource) getSecretData(ctx context.Context, state *SecretReso
 			}
 		}
 
+		// Handle field values appropriately - all optional fields should accept null or empty values
+		var itemValue string
+
+		// All fields can accept null or empty values (they're all optional in Terraform schema)
+		if field.ItemValue.IsNull() {
+			// For null values, use empty string
+			itemValue = ""
+			fmt.Printf("[DEBUG] Field with null value detected: %s, using empty string\n", fieldName)
+		} else {
+			// Otherwise use the actual value
+			itemValue = field.ItemValue.ValueString()
+
+			// Log empty strings but keep them as valid values
+			if itemValue == "" {
+				fmt.Printf("[DEBUG] Field with explicit empty string detected: %s\n", fieldName)
+			}
+		}
+
 		// Populate the field object
-		fields = append(fields, server.SecretField{
+		secretField := server.SecretField{
 			FieldDescription: templateField.Description,
 			FieldID:          templateField.SecretTemplateFieldID,
 			FieldName:        templateField.Name,
 			FileAttachmentID: func() int {
-				if !field.ItemValue.IsNull() {
+				if !field.ItemValue.IsNull() && field.ItemValue.ValueString() != "" {
 					value, err := strconv.Atoi(field.ItemValue.ValueString())
 					if err == nil {
 						return value
@@ -536,9 +724,17 @@ func (r *TSSSecretResource) getSecretData(ctx context.Context, state *SecretReso
 			IsFile:     templateField.IsFile,
 			IsNotes:    templateField.IsNotes,
 			IsPassword: templateField.IsPassword,
-			ItemValue:  field.ItemValue.ValueString(),
+			ItemValue:  itemValue,
 			Slug:       templateField.FieldSlugName,
-		})
+		}
+
+		// For file attachments, preserve the FileAttachmentID and Filename
+		if !field.IsFile.IsNull() && field.IsFile.ValueBool() {
+			secretField.FileAttachmentID = int(field.FileAttachmentID.ValueInt64())
+			secretField.Filename = field.Filename.ValueString()
+		}
+
+		fields = append(fields, secretField)
 	}
 
 	// Populate the secret object
@@ -549,6 +745,15 @@ func (r *TSSSecretResource) getSecretData(ctx context.Context, state *SecretReso
 		SecretTemplateID: templateID,
 		Fields:           fields,
 		Active:           state.Active.ValueBool(),
+	}
+
+	// Handle SSH key args if provided - only during create operations
+	// (We ensure this is nil during updates in the Update method)
+	if state.SshKeyArgs != nil {
+		secret.SshKeyArgs = &server.SshKeyArgs{
+			GeneratePassphrase: state.SshKeyArgs.GeneratePassphrase.ValueBool(),
+			GenerateSshKeys:    state.SshKeyArgs.GenerateSshKeys.ValueBool(),
+		}
 	}
 
 	// Handle optional attributes
@@ -605,9 +810,21 @@ func flattenSecret(secret *server.Secret) (*SecretResourceState, error) {
 	var fields []SecretField
 
 	for _, f := range secret.Fields {
-		fields = append(fields, SecretField{
+		// Handle ItemValue consistently for all fields - all fields can have empty values
+		var itemValue types.String
+
+		// All fields should use StringValue even for empty strings
+		// This ensures Terraform treats empty strings as valid values rather than null
+		itemValue = types.StringValue(f.ItemValue)
+
+		// Add debug logging for empty values
+		if f.ItemValue == "" {
+			fmt.Printf("[DEBUG] Flatten: Field '%s' has empty value\n", f.FieldName)
+		}
+
+		field := SecretField{
 			FieldName:        types.StringValue(f.FieldName),
-			ItemValue:        types.StringValue(f.ItemValue),
+			ItemValue:        itemValue,
 			ItemID:           types.Int64Value(int64(f.ItemID)),
 			FieldID:          types.Int64Value(int64(f.FieldID)),
 			FileAttachmentID: types.Int64Value(int64(f.FileAttachmentID)),
@@ -617,7 +834,26 @@ func flattenSecret(secret *server.Secret) (*SecretResourceState, error) {
 			IsFile:           types.BoolValue(f.IsFile),
 			IsNotes:          types.BoolValue(f.IsNotes),
 			IsPassword:       types.BoolValue(f.IsPassword),
-		})
+		}
+
+		// Handle file fields and potential SSH key fields
+		if f.IsFile {
+			field.FileAttachmentID = types.Int64Value(int64(f.FileAttachmentID))
+			if f.Filename != "" {
+				field.Filename = types.StringValue(f.Filename)
+			}
+		}
+
+		// Special handling for SSH key fields - ensure they have filename if provided by server
+		isSSHKeyField := strings.Contains(strings.ToLower(f.FieldName), "key") ||
+			strings.Contains(strings.ToLower(f.FieldName), "passphrase")
+
+		if isSSHKeyField && f.Filename != "" {
+			field.Filename = types.StringValue(f.Filename)
+			fmt.Printf("[DEBUG] Flatten: Found SSH key field %s with filename %s\n", f.FieldName, f.Filename)
+		}
+
+		fields = append(fields, field)
 	}
 
 	state := &SecretResourceState{
@@ -628,6 +864,14 @@ func flattenSecret(secret *server.Secret) (*SecretResourceState, error) {
 		SecretTemplateID: types.StringValue(strconv.Itoa(secret.SecretTemplateID)),
 		Fields:           fields,
 		Active:           types.BoolValue(secret.Active),
+	}
+
+	// Handle SSH key args if present
+	if secret.SshKeyArgs != nil {
+		state.SshKeyArgs = &SshKeyArgs{
+			GeneratePassphrase: types.BoolValue(secret.SshKeyArgs.GeneratePassphrase),
+			GenerateSshKeys:    types.BoolValue(secret.SshKeyArgs.GenerateSshKeys),
+		}
 	}
 
 	// Optional fields
@@ -664,4 +908,91 @@ func stringToInt(value types.String) (int, error) {
 		return 0, nil
 	}
 	return strconv.Atoi(value.ValueString())
+}
+
+// sshKeyFieldPlanModifier is a custom plan modifier for SSH key fields
+type sshKeyFieldPlanModifier struct{}
+
+func (m sshKeyFieldPlanModifier) Description(ctx context.Context) string {
+	return "If SSH key generation is enabled and the value is empty, mark as unknown so it can be computed."
+}
+
+func (m sshKeyFieldPlanModifier) MarkdownDescription(ctx context.Context) string {
+	return "If SSH key generation is enabled and the value is empty, mark as unknown so it can be computed."
+}
+
+func (m sshKeyFieldPlanModifier) PlanModifyString(ctx context.Context, req planmodifier.StringRequest, resp *planmodifier.StringResponse) {
+	// Log the plan values for debugging
+	fmt.Printf("[DEBUG] PlanModifyString field")
+
+	// If user explicitly set a value (including empty string) in the config, respect it
+	if !req.ConfigValue.IsNull() {
+		fmt.Printf("[DEBUG] Using explicit config value\n")
+		resp.PlanValue = req.ConfigValue
+		return
+	}
+
+	// For creation with potentially computed values
+	if req.State.Raw.IsNull() && (req.PlanValue.IsNull() || req.PlanValue.ValueString() == "") {
+		// Determine if this value should be computed by SSH key generation
+		if shouldComputeSshKeyValue(req) {
+			fmt.Printf("[DEBUG] Marking value as computed for potential SSH key field\n")
+			resp.PlanValue = types.StringUnknown()
+			return
+		}
+	}
+
+	// For null values in the plan, convert to empty string for consistency
+	if req.PlanValue.IsNull() {
+		fmt.Printf("[DEBUG] Converting null plan value to empty string\n")
+		resp.PlanValue = types.StringValue("")
+		return
+	}
+
+	// Otherwise, use the planned value as is
+	resp.PlanValue = req.PlanValue
+}
+
+// Helper function to determine if a field value should be computed by SSH key generation
+func shouldComputeSshKeyValue(req planmodifier.StringRequest) bool {
+	// Only mark values as computed during creation for SSH key fields when SSH key generation is enabled
+
+	// Check if this is a create operation (state is null)
+	if !req.State.Raw.IsNull() {
+		// This is an update, not a creation, so don't compute
+		return false
+	}
+
+	// Check if the user explicitly set an empty string in the config
+	// If they did, we should respect that and not compute a value
+	if req.ConfigValue.IsNull() == false && req.ConfigValue.ValueString() == "" {
+		// User explicitly set an empty string, preserve it
+		fmt.Printf("[DEBUG] User explicitly set empty string in config, preserving\n")
+		return false
+	}
+
+	// If we've reached here, it's a create operation and the field might need to be computed
+
+	// Check if the path contains a field reference
+	pathSteps := req.Path.Steps()
+	if len(pathSteps) < 3 {
+		return false
+	}
+
+	// Check if this is the "itemvalue" attribute within a "fields" block
+	if pathSteps[0].String() != "fields" || pathSteps[len(pathSteps)-1].String() != "itemvalue" {
+		return false
+	}
+
+	// At this point, we would ideally check:
+	// 1. If this field is an SSH key field (by name)
+	// 2. If SSH key generation is enabled in the plan
+	//
+	// However, without easy access to the field name here,
+	// and since we don't have access to other parts of the plan,
+	// we'll assume any null/empty field during create could be computed
+
+	// For create operations with empty values that haven't been explicitly set,
+	// mark as computed
+	return req.PlanValue.ValueString() == ""
 }
