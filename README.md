@@ -203,3 +203,76 @@ ephemeral "tss_secrets" "my_passwords" {
   field = "password"
 }
 ```
+
+# SSH Key Generation in Terraform Provider for TSS
+
+This guide explains how to properly configure and use SSH key generation in the Terraform Provider for TSS.
+
+## How to Define SSH Key Arguments
+
+### In `secret_create.tf`
+
+The `secret_create.tf` file defines the Terraform resource configuration:
+
+```hcl
+resource "tss_resource_secret" "secret_name" {
+  name = var.tss_secret_name
+  folderid = var.tss_secret_folderid
+  siteid = var.tss_secret_siteid
+  secrettemplateid = var.tss_secret_templateid
+  active = true
+  
+  dynamic "fields" {
+    for_each = var.fields
+    content {
+      fieldname = fields.value.fieldname
+      # Only set itemvalue if SSH key generation is disabled OR if this is not an SSH key field
+      itemvalue = (var.generate_ssh_keys && contains(var.ssh_key_fields, fields.value.fieldname)) ? null : fields.value.itemvalue
+    }
+  }
+  
+  sshkeyargs {
+    generatepassphrase = var.generate_passphrase
+    generatesshkeys    = var.generate_ssh_keys
+  }
+}
+```
+
+Important notes:
+1. Use `dynamic "fields"` block to conditionally set field values
+2. Set SSH key field values to `null` when using generation
+3. Include the `sshkeyargs` block with appropriate boolean settings
+
+### In `secret_ssh.tfvars`
+
+The `secret_ssh.tfvars` file defines the variable values:
+
+```hcl
+fields = [
+  {
+    fieldname = "Public Key"
+    itemvalue = null
+  },
+  {
+    fieldname = "Private Key"
+    itemvalue = null
+  },
+  {
+    fieldname = "Private Key Passphrase"
+    itemvalue = null
+  }
+]
+
+# SSH Key Generation Settings
+generate_passphrase = true
+generate_ssh_keys   = true
+```
+
+Important notes:
+1. Set `itemvalue` to `null` for SSH key fields
+2. Set the appropriate boolean values for `generate_passphrase` and `generate_ssh_keys`
+
+## Limitations and Considerations
+
+1. **Creation Only**: SSH key generation is only supported during secret creation, not during updates
+2. **Field Values**: When updating a secret with previously generated SSH keys, the provider will automatically preserve the generated values
