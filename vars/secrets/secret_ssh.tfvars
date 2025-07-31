@@ -1,6 +1,6 @@
-tss_username   = "admin"
-tss_password   = "Cybage@123"
-tss_server_url = "https://scimtest.secretservercloud.com"
+tss_username   = "username"
+tss_password   = "password"
+tss_server_url = "https://test.secretservercloud.com"
 tss_secret_name = "Sagar 2 SSH"
 tss_secret_siteid = 1
 tss_secret_folderid = 1530
