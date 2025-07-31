@@ -1,9 +1,9 @@
 tss_username   = "username"
 tss_password   = "password"
 tss_server_url = "https://test.secretservercloud.com"
-tss_secret_name = "Sagar 2 SSH"
+tss_secret_name = "Test SSH"
 tss_secret_siteid = 1
-tss_secret_folderid = 1530
+tss_secret_folderid = -1
 tss_secret_templateid = 6026
 fields = [
   {
