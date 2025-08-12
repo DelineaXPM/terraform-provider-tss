@@ -38,9 +38,27 @@ variable "tss_secret_templateid" {
 
 variable "fields" {
   type = list(object({
-    itemvalue = string
-	fieldname = string
+    itemvalue = optional(string, "")
+    fieldname = string
   }))
+}
+
+variable "ssh_key_fields" {
+  type        = list(string)
+  description = "List of field names that should be generated when SSH key generation is enabled"
+  default     = ["Public Key", "Private Key", "Private Key Passphrase"]
+}
+
+variable "generate_passphrase" {
+  type        = bool
+  description = "Whether to generate a passphrase for the SSH key"
+  default     = false
+}
+
+variable "generate_ssh_keys" {
+  type        = bool
+  description = "Whether to generate SSH keys"
+  default     = false
 }
 
 provider "tss" {
@@ -58,8 +76,14 @@ resource "tss_resource_secret" "secret_name" {
   dynamic "fields" {
     for_each = var.fields
     content {
-      fieldname   = fields.value.fieldname
-      itemvalue = fields.value.itemvalue
+      fieldname = fields.value.fieldname
+      # Only set itemvalue if SSH key generation is disabled OR if this is not an SSH key field
+      itemvalue = (var.generate_ssh_keys && contains(var.ssh_key_fields, fields.value.fieldname)) ? null : fields.value.itemvalue
     }
+  }
+  
+  sshkeyargs {
+    generatepassphrase = var.generate_passphrase
+    generatesshkeys    = var.generate_ssh_keys
   }
 }
