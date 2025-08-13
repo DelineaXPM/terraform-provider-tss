@@ -110,9 +110,40 @@ Above Create/Update Secret variables are for Windows Account secret template of 
 4. Based on template fields add/update field (with field name and item value) in fields array as above example. In above example there are four fields but in other template
  there might be more/less flieds. Accordingly, add/remove field entry from the fields array.
 
-Deactivate Secret:
+Delete Secret:
 
-The secret will be deactivated in the Secret Server when the `terraform destroy` command is executed.
+This functionality deactivates the secret in Delinea Secret Server.
+
+## Delete Secret by ID
+
+The `tss_secret_deletion` resource allows you to delete secrets by their ID, even if they are not managed by Terraform state.
+
+### Delete a Single Secret
+
+```hcl
+resource "tss_secret_deletion" "delete_secret" {
+  secret_id = 12345
+}
+```
+
+Apply this configuration to delete the secret with ID `12345`. After deletion, run `terraform destroy` to remove the resource from state before deleting another secret.
+
+### Delete Multiple Secrets
+
+```hcl
+resource "tss_secret_deletion" "delete_secrets" {
+  for_each = toset(["1001", "1002", "1003"])
+  secret_id = tonumber(each.key)
+}
+```
+
+This will delete all secrets listed in the set. Each deletion is tracked separately in state.
+
+**Best Practice:**
+- After deleting, run `terraform destroy` to clean up the state before deleting new secrets.
+- For batch deletions, use `for_each` or unique resource names.
+
+**Note:** The resource performs deletion during the `terraform apply` phase. The resource is tracked in state to prevent repeated deletion attempts. "Creating..." in logs means the deletion is being performed.
 
 ## Environment variables
 

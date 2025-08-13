@@ -114,6 +114,9 @@ func (p *TSSProvider) DataSources(ctx context.Context) []func() datasource.DataS
 func (p *TSSProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		func() resource.Resource { return &TSSSecretResource{} },
+		func() resource.Resource {
+			return &TSSSecretDeletionResource{}
+		},
 		//For the DEBUG environment, uncomment this line to unit test whether the secret value is being fetched successfully.
 		//func() resource.Resource { return &PrintSecretResource{} },
 	}
