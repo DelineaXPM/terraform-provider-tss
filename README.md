@@ -1,4 +1,4 @@
-# Delinea Secret Server - Terraform Provider
+# Delinea Secret Server - Terraform Provider Update
 
 The [Delinea](https://delinea.com/) [Secret Server](https://delinea.com/products/secret-server/) [Terraform](https://www.terraform.io/) Provider allows you to access and reference Secrets in your vault for use in Terraform configurations. Detail documentation of this integration is available [here](https://docs.delinea.com/online-help/integrations/terraform/configure.htm)
 
