@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/DelineaXPM/terraform-provider-tss/v2/delinea"
+	"github.com/DelineaXPM/terraform-provider-tss/v3/delinea"
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 )
 
