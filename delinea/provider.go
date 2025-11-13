@@ -5,8 +5,10 @@ import (
 	"log"
 
 	"github.com/DelineaXPM/tss-sdk-go/v2/server"
+	"github.com/hashicorp/terraform-plugin-framework-validators/providervalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/ephemeral"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -21,6 +23,7 @@ type TSSProviderModel struct {
 	ServerURL types.String `tfsdk:"server_url"`
 	Username  types.String `tfsdk:"username"`
 	Password  types.String `tfsdk:"password"`
+	Token     types.String `tfsdk:"token"`
 	Domain    types.String `tfsdk:"domain"`
 }
 
@@ -41,19 +44,37 @@ func (p *TSSProvider) Schema(ctx context.Context, req provider.SchemaRequest, re
 				Description: "The Secret Server base URL e.g. https://localhost/SecretServer",
 			},
 			"username": schema.StringAttribute{
-				Required:    true,
+				Optional:    true,
 				Description: "The username of the Secret Server User to connect as",
 			},
 			"password": schema.StringAttribute{
-				Required:    true,
+				Optional:    true,
 				Sensitive:   true,
 				Description: "The password of the Secret Server User",
+			},
+			"token": schema.StringAttribute{
+				Optional:    true,
+				Sensitive:   true,
+				Description: "A token to authenticate the Secret Server User",
 			},
 			"domain": schema.StringAttribute{
 				Optional:    true,
 				Description: "Domain of the Secret Server user",
 			},
 		},
+	}
+}
+
+func (p *TSSProvider) ConfigValidators(ctx context.Context) []provider.ConfigValidator {
+	return []provider.ConfigValidator {
+			providervalidator.RequiredTogether(
+				path.MatchRoot("username"),
+				path.MatchRoot("password"),
+			),
+			providervalidator.ExactlyOneOf(
+				path.MatchRoot("username"),
+				path.MatchRoot("token"),
+			),
 	}
 }
 
@@ -87,6 +108,7 @@ func (p *TSSProvider) Configure(ctx context.Context, req provider.ConfigureReque
 		Credentials: server.UserCredential{
 			Username: config.Username.ValueString(),
 			Password: config.Password.ValueString(),
+			Token:    config.Token.ValueString(),
 			Domain:   config.Domain.ValueString(),
 		},
 	}
