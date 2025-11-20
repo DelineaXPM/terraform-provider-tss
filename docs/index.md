@@ -52,8 +52,19 @@ $ export TSS_SERVER_URL="https://localhost/SecretServer"
 $ terraform plan
 ```
 
+Alternatively, an OAuth API token can be provided instead of a username and password:
+
+```
+$ export TSS_TOKEN="PASTE_TOKEN_HERE"
+$ export TSS_SERVER_URL="https://localhost/SecretServer"
+$ terraform plan
+```
+
 ### Required
 
-- `password` (String) The password of the Secret Server User
 - `server_url` (String) The Secret Server base URL e.g. https://localhost/SecretServer
-- `username` (String) The username of the Secret Server User to connect as
+- Username/password authentication:
+  - `username` (String) The username of the Secret Server User to connect as
+  - `password` (String) The password of the Secret Server User
+- Token authentication
+  - `token` (String) An OAuth token to authenticate with the Secret Server

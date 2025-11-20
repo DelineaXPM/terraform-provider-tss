@@ -4,12 +4,14 @@ go 1.25.1
 
 require (
 	github.com/DelineaXPM/tss-sdk-go/v2 v2.0.3
-	github.com/hashicorp/terraform-plugin-framework v1.16.0
+	github.com/hashicorp/terraform-plugin-framework v1.16.1
 	github.com/hashicorp/terraform-plugin-go v0.29.0 // indirect
 	golang.org/x/crypto v0.43.0
 )
 
 require github.com/hashicorp/terraform-plugin-log v0.9.0 // indirect
+
+require github.com/hashicorp/terraform-plugin-framework-validators v0.19.0
 
 require (
 	github.com/fatih/color v1.18.0 // indirect

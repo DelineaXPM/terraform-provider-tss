@@ -171,6 +171,23 @@ Usage (For Windows)
 > terraform plan or > terraform apply
 ```
 
+Alternatively, an OAuth API token can be provided instead of a username and password:
+
+```
+$ export TSS_TOKEN="PASTE_TOKEN_HERE"
+$ export TSS_SERVER_URL="https://localhost/SecretServer"
+$ terraform plan
+```
+
+### Required
+
+- `server_url` (String) The Secret Server base URL e.g. https://localhost/SecretServer
+- Username/password authentication:
+  - `username` (String) The username of the Secret Server User to connect as
+  - `password` (String) The password of the Secret Server User
+- Token authentication
+  - `token` (String) An OAuth token to authenticate with the Secret Server
+
 ## Domain user accounts
 
 Domain users, such as Active Directory accounts, can be used by supplying the `tss_domain` parameter. E.G.
