@@ -90,17 +90,13 @@ func (p *TSSProvider) Configure(ctx context.Context, req provider.ConfigureReque
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		resp.Diagnostics.AddError("Configuration Error", "Failed to read provider configuration")
-		log.Printf("Failed to read provider configuration", map[string]interface{}{
-			"diagnostics": resp.Diagnostics,
-		})
+		log.Printf("Failed to read provider configuration: %v", resp.Diagnostics)
 		return
 	}
 
 	// Log the configuration values
-	log.Printf("Provider configuration values retrieved", map[string]interface{}{
-		"server_url": config.ServerURL.ValueString(),
-		"username":   config.Username.ValueString(),
-	})
+	log.Printf("Provider configuration values retrieved: server_url=%s username=%s",
+		config.ServerURL.ValueString(), config.Username.ValueString())
 
 	// Create the server configuration
 	serverConfig := &server.Configuration{
@@ -114,11 +110,6 @@ func (p *TSSProvider) Configure(ctx context.Context, req provider.ConfigureReque
 	}
 
 	// Pass the server configuration to resources and data sources
-	if serverConfig == nil {
-		log.Printf("Server configuration is nil")
-		resp.Diagnostics.AddError("Configuration Error", "Server configuration is nil")
-		return
-	}
 	resp.DataSourceData = serverConfig
 	resp.ResourceData = serverConfig
 	resp.EphemeralResourceData = serverConfig
