@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/DelineaXPM/tss-sdk-go/v2/server"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -220,6 +221,102 @@ func TestAlignFieldsToReference_DropsApiFieldAbsentFromReference(t *testing.T) {
 
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+func TestAlignFieldsToReference_PreservesPasswordWoVersionFromReference(t *testing.T) {
+	apiResponse := []SecretField{
+		{FieldName: types.StringValue("Password"), PasswordWoVersion: types.Int64Null()},
+	}
+	userConfig := []SecretField{
+		{FieldName: types.StringValue("Password"), PasswordWoVersion: types.Int64Value(7)},
+	}
+
+	got := alignFieldsToReference(apiResponse, userConfig)
+
+	if len(got) != 1 {
+		t.Fatalf("got %d fields, want 1", len(got))
+	}
+	if got[0].PasswordWoVersion.ValueInt64() != 7 {
+		t.Fatalf("got password_wo_version=%v, want 7", got[0].PasswordWoVersion)
+	}
+}
+
+func TestAlignFieldsToReference_NullPasswordWoVersionInReferenceStaysNull(t *testing.T) {
+	apiResponse := []SecretField{
+		{FieldName: types.StringValue("Password"), PasswordWoVersion: types.Int64Null()},
+	}
+	userConfig := []SecretField{
+		{FieldName: types.StringValue("Password"), PasswordWoVersion: types.Int64Null()},
+	}
+
+	got := alignFieldsToReference(apiResponse, userConfig)
+
+	if !got[0].PasswordWoVersion.IsNull() {
+		t.Fatalf("got password_wo_version=%v, want null", got[0].PasswordWoVersion)
+	}
+}
+
+func TestFlattenSecret_NullsItemValueForPasswordFields(t *testing.T) {
+	secret := &server.Secret{
+		ID:   42,
+		Name: "test-secret",
+		Fields: []server.SecretField{
+			{FieldName: "Username", ItemValue: "myuser", IsPassword: false},
+			{FieldName: "Password", ItemValue: "SuperSecret!", IsPassword: true},
+			{FieldName: "Notes", ItemValue: "plain-text-ok", IsPassword: false},
+		},
+	}
+
+	state, err := flattenSecret(secret)
+	if err != nil {
+		t.Fatalf("flattenSecret returned error: %v", err)
+	}
+
+	var pw, user, notes *SecretField
+	for i := range state.Fields {
+		switch state.Fields[i].FieldName.ValueString() {
+		case "Username":
+			user = &state.Fields[i]
+		case "Password":
+			pw = &state.Fields[i]
+		case "Notes":
+			notes = &state.Fields[i]
+		}
+	}
+	if pw == nil || user == nil || notes == nil {
+		t.Fatalf("expected three fields, got Username=%v Password=%v Notes=%v", user, pw, notes)
+	}
+	if pw.ItemValue.IsNull() || pw.ItemValue.ValueString() != "" {
+		t.Fatalf("password itemvalue got %v, want empty string", pw.ItemValue)
+	}
+	if pw.ItemValue.ValueString() == "SuperSecret!" {
+		t.Fatalf("password plaintext leaked into itemvalue: %q", pw.ItemValue.ValueString())
+	}
+	if user.ItemValue.ValueString() != "myuser" {
+		t.Fatalf("username itemvalue got %v, want 'myuser'", user.ItemValue)
+	}
+	if notes.ItemValue.ValueString() != "plain-text-ok" {
+		t.Fatalf("notes itemvalue got %v, want 'plain-text-ok'", notes.ItemValue)
+	}
+}
+
+func TestFlattenSecret_PasswordValueAlwaysNull(t *testing.T) {
+	secret := &server.Secret{
+		ID:   42,
+		Name: "test-secret",
+		Fields: []server.SecretField{
+			{FieldName: "Username", ItemValue: "u", IsPassword: false},
+			{FieldName: "Password", ItemValue: "p", IsPassword: true},
+		},
+	}
+
+	state, _ := flattenSecret(secret)
+
+	for _, f := range state.Fields {
+		if !f.PasswordValue.IsNull() {
+			t.Fatalf("field %s password_value got %v, want null (WriteOnly)", f.FieldName.ValueString(), f.PasswordValue)
+		}
 	}
 }
 

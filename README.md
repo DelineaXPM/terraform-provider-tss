@@ -115,6 +115,56 @@ Delete Secret:
 
 This functionality deactivates the secret in Delinea Secret Server.
 
+## Password handling (`tss_resource_secret`)
+
+Password fields on `tss_resource_secret` use Terraform's write-only attribute mechanism to keep the value out of Terraform state. Use the `password_value` attribute for any field where the template has `IsPassword` set (e.g. the `Password` field on the built-in Password template).
+
+### Setting a password on a new secret
+
+```hcl
+resource "tss_resource_secret" "example" {
+  name             = "example"
+  folderid         = "5"
+  siteid           = "1"
+  secrettemplateid = "2"
+
+  fields {
+    fieldname = "Username"
+    itemvalue = "myuser"
+  }
+  fields {
+    fieldname           = "Password"
+    password_value      = var.db_password
+    password_wo_version = 1
+  }
+}
+```
+
+`password_value` is write-only: it is sent to Secret Server on create/update but never written to `terraform.tfstate` or emitted by `terraform show -json`. Because Terraform cannot compare a value that isn't in state, the provider uses `password_wo_version` as an explicit rotation trigger.
+
+### Rotating a password
+
+Change both attributes together and apply:
+
+```hcl
+fields {
+  fieldname           = "Password"
+  password_value      = var.db_password_new     # new value
+  password_wo_version = 2                        # bumped from 1
+}
+```
+
+On plan, Terraform sees the `password_wo_version` change and schedules an update; on apply, the provider reads `password_value` from config and sends it to Secret Server. Any new integer works — only the change is significant.
+
+### Guarantees and caveats
+
+- `terraform.tfstate` contains no plaintext password. Post-apply, `itemvalue` is `null` for any field the template marks `IsPassword`.
+- `terraform show -json` does not emit the password value.
+- CLI plan/apply output masks the value because `password_value` and `itemvalue` are both marked `Sensitive`.
+- The password value still lives in your Terraform config. Use env vars, a TF Cloud sensitive variable, or a secret-backend data source for the actual input.
+- Legacy configs that set `itemvalue` on a password field still work, but `flattenSecret` now nulls the value in state, which produces a perpetual plan diff. Migrate those fields to `password_value` + `password_wo_version`.
+- Upgrading from v3.1.x or earlier: existing state files still contain plaintext passwords. The first `terraform apply` or `terraform refresh` after the upgrade will null them; no data loss, just state cleanup.
+
 ## Delete Secret by ID
 
 The `tss_secret_deletion` resource allows you to delete secrets by their ID, even if they are not managed by Terraform state.
