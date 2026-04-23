@@ -10,11 +10,11 @@ The latest release can be [downloaded from the terraform registry](https://regis
 
 If wish to install straight from source, follow the steps below.
 
-## Install form Source
+## Install from Source
 
-### Terraform 0.13 and later
+### Terraform 1.11 and later
 
-Terraform 0.13 uses a different file system layout for 3rd party providers. More information on this can be found [here](https://www.terraform.io/upgrade-guides/0-13.html#new-filesystem-layout-for-local-copies-of-providers). The following folder path will need to be created in the plugins directory of the user's profile.
+This provider requires **Terraform 1.11 or later**. The write-only attribute support used by `password_value` on `tss_resource_secret` is a Terraform 1.11 core feature; earlier versions will reject the schema. To install a local build, place the provider binary under the standard plugins directory for your OS:
 
 #### Windows
 
@@ -23,7 +23,7 @@ Terraform 0.13 uses a different file system layout for 3rd party providers. More
 └───terraform.delinea.com
     DelineaXPM
         └───tss
-            └───3.0.0
+            └───4.0.0
                 └───windows_amd64
 ```
 
@@ -34,20 +34,21 @@ Terraform 0.13 uses a different file system layout for 3rd party providers. More
 └───terraform.delinea.com
     DelineaXPM
         └───tss
-            └───3.0.0
+            └───4.0.0
                 ├───linux_amd64
 ```
 
 ## Usage
 
-For Terraform 0.13+, include the `terraform` block in your configuration, or plan, that specifies the provider:
+Include the `terraform` block in your configuration, or plan, that specifies the Terraform version and provider:
 
 ```terraform
 terraform {
+  required_version = ">= 1.11.0"
   required_providers {
     tss = {
-      source = "DelineaXPM/tss"
-      version = "~> 2.0"
+      source  = "DelineaXPM/tss"
+      version = ">= 4.0.0"
     }
   }
 }
@@ -233,7 +234,7 @@ Usage (For Windows)
 ## Ephemeral Resource
 
 This ephemeral resource fetches secret values from Delinea Secret Server at runtime without storing them in Terraform state. It is useful for handling sensitive secret data dynamically without persisting them. An ephemeral resource can be used as shown below.
-To support the Ephemeral Resource miniumum version of Terraform must be 1.10.5 and above.
+Ephemeral resources require Terraform 1.10.5 or later; this provider's overall floor is Terraform 1.11 (see above), which satisfies that requirement.
 
 Get Secret By ID:
 

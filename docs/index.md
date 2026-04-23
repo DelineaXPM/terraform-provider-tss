@@ -14,15 +14,15 @@ For Delinea's official Terraform documentation, please see [here](https://docs.d
 
 ## Example Usage
 
-For Terraform 0.13+, include the `terraform` block in your configuration or plan to that specifies the provider:
+This provider requires Terraform 1.11 or later. Include the `terraform` block in your configuration or plan to specify the provider and Terraform version:
 
 ```terraform
 terraform {
+  required_version = ">= 1.11.0"
   required_providers {
     tss = {
-      source = "DelineaXPM/tss"
-      version = "~> 2.0"
-
+      source  = "DelineaXPM/tss"
+      version = ">= 4.0.0"
     }
   }
 }
