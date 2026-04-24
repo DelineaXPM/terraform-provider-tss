@@ -29,6 +29,20 @@ package delinea
 //	TSS_TEST_SITE_ID         Site ID (default "1").
 //	TSS_TEST_TEMPLATE_ID     Template ID (default "2", the Password template, with
 //	                         four fields: Resource, Username, Password, Notes).
+//	TSS_TEST_SSH_TEMPLATE_ID Template ID for a Unix-SSH-family template (Machine +
+//	                         Username + Public Key + Private Key + Private Key
+//	                         Passphrase; Password optional or absent). SS typically
+//	                         ships "Unix Account (SSH Key Rotation - No Password)"
+//	                         matching this shape; look it up on your tenant via
+//	                         GET /api/v1/secret-templates/<id> to confirm fields
+//	                         before setting this env var. If unset,
+//	                         TestAccTSSSecret_SshKeyGeneration skips.
+//	TSS_TEST_MIXED_TEMPLATE_ID Template ID for a template with both a Password
+//	                         field and SSH key fields (typically "Unix Account (SSH
+//	                         Key Rotation)"); built-in template IDs vary across
+//	                         SS versions and installations, so verify on your
+//	                         tenant. If unset,
+//	                         TestAccTSSSecret_SshKeyAndPasswordMixed skips.
 //
 // Example invocation:
 //
@@ -340,6 +354,143 @@ func TestAccTSSSecret_PartialFieldsRefreshNoDrift(t *testing.T) {
 			{
 				Config: config,
 				Check:  resource.TestCheckResourceAttr("tss_resource_secret.test", "fields.#", "2"),
+			},
+			{
+				Config:             config,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+// sshSecretConfig generates HCL for a secret on a Unix-SSH-family template
+// (Machine + Username + SSH key fields, optionally Password). SSH key fields
+// are declared with empty itemvalue so the sshKeyFieldPlanModifier marks them
+// Unknown at plan time and the server fills them in at apply (triggered by
+// sshkeyargs.generatesshkeys = true).
+func sshSecretConfig(name, templateID string, withPassword bool) string {
+	pwBlock := ""
+	if withPassword {
+		pwBlock = `
+  fields {
+    fieldname           = "Password"
+    password_value      = "MixedSshPw-uniq1"
+    password_wo_version = 1
+  }`
+	}
+	return fmt.Sprintf(`
+terraform {
+  required_version = ">= 1.11.0"
+}
+%s
+resource "tss_resource_secret" "test" {
+  name             = %q
+  folderid         = %q
+  siteid           = %q
+  secrettemplateid = %q
+
+  fields {
+    fieldname = "Machine"
+    itemvalue = "ssh-acc-host"
+  }
+  fields {
+    fieldname = "Username"
+    itemvalue = "testuser"
+  }%s
+
+  fields {
+    fieldname = "Public Key"
+  }
+  fields {
+    fieldname = "Private Key"
+  }
+  fields {
+    fieldname = "Private Key Passphrase"
+  }
+
+  sshkeyargs {
+    generatesshkeys    = true
+    generatepassphrase = true
+  }
+}
+`,
+		testAccProviderBlock(),
+		name,
+		os.Getenv("TSS_TEST_FOLDER_ID"),
+		envOr("TSS_TEST_SITE_ID", "1"),
+		templateID,
+		pwBlock,
+	)
+}
+
+// Exercises the sshKeyFieldPlanModifier's "mark Unknown" path for SSH key
+// generation. The user supplies no itemvalue for the SSH fields; the plan
+// modifier marks them Unknown on Create; the server (triggered by
+// sshkeyargs.generatesshkeys = true) generates values at apply time;
+// flattenSecret stores them in state.
+//
+// Skipped unless TSS_TEST_SSH_TEMPLATE_ID is set — SSH-key templates are
+// tenant-specific.
+func TestAccTSSSecret_SshKeyGeneration(t *testing.T) {
+	templateID := os.Getenv("TSS_TEST_SSH_TEMPLATE_ID")
+	if templateID == "" {
+		t.Skip("TSS_TEST_SSH_TEMPLATE_ID not set; skipping SSH key generation test")
+	}
+	name := acctest.RandomWithPrefix("tf-acc-ssh")
+	config := sshSecretConfig(name, templateID, false)
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: config,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					// Machine(0), Username(1), Public Key(2), Private Key(3), Passphrase(4)
+					resource.TestCheckResourceAttr("tss_resource_secret.test", "fields.#", "5"),
+					resource.TestCheckResourceAttrSet("tss_resource_secret.test", "fields.2.itemvalue"),
+					resource.TestCheckResourceAttrSet("tss_resource_secret.test", "fields.3.itemvalue"),
+				),
+			},
+			{
+				Config:             config,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+// Exercises a template that contains both a Password field (using
+// password_value) and SSH key fields (using sshkeyargs generation). Verifies
+// non-interference: password_value stays out of state, SSH fields get
+// generated values, re-plan shows no drift.
+//
+// Skipped unless TSS_TEST_MIXED_TEMPLATE_ID is set — mixed templates (e.g.
+// Unix Account with SSH Key) are tenant-specific.
+func TestAccTSSSecret_SshKeyAndPasswordMixed(t *testing.T) {
+	templateID := os.Getenv("TSS_TEST_MIXED_TEMPLATE_ID")
+	if templateID == "" {
+		t.Skip("TSS_TEST_MIXED_TEMPLATE_ID not set; skipping mixed SSH+password test")
+	}
+	name := acctest.RandomWithPrefix("tf-acc-mixed")
+	config := sshSecretConfig(name, templateID, true)
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: config,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					// Machine(0), Username(1), Password(2), Public Key(3), Private Key(4), Passphrase(5)
+					resource.TestCheckResourceAttr("tss_resource_secret.test", "fields.#", "6"),
+					// Password field's itemvalue is "" (never populated in state)
+					resource.TestCheckResourceAttr("tss_resource_secret.test", "fields.2.itemvalue", ""),
+					resource.TestCheckResourceAttr("tss_resource_secret.test", "fields.2.password_wo_version", "1"),
+					// SSH key fields get server-generated values
+					resource.TestCheckResourceAttrSet("tss_resource_secret.test", "fields.3.itemvalue"),
+					resource.TestCheckResourceAttrSet("tss_resource_secret.test", "fields.4.itemvalue"),
+				),
 			},
 			{
 				Config:             config,
