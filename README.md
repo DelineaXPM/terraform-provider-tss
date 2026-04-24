@@ -165,6 +165,19 @@ On plan, Terraform sees the `password_wo_version` change and schedules an update
 - Legacy configs that set `itemvalue` on a password field still work, but `flattenSecret` now nulls the value in state, which produces a perpetual plan diff. Migrate those fields to `password_value` + `password_wo_version`.
 - Upgrading from v3.1.x or earlier: existing state files still contain plaintext passwords. The first `terraform apply` or `terraform refresh` after the upgrade will null them; no data loss, just state cleanup.
 
+## Computed fields on `tss_resource_secret.fields`
+
+Each `fields` block has attributes that Secret Server assigns automatically after `terraform apply`. They appear in Terraform state but are not user-settable:
+
+- `itemid` — database ID of this field-value record. Auto-assigned by Secret Server; sequential per newly-created secret.
+- `fieldid` — the template field ID. Stable per template, shared across every secret that uses the template. Not sequential.
+- `slug` — the field's URL slug, assigned by the template.
+- `fielddescription` — the field description, set by the template.
+
+Setting any of these four in your config produces a plan error ("Can't configure a value for `itemid`: its value will be decided automatically based on the result of applying this configuration"). That's the signal that these are server-assigned — leave them out.
+
+One exception: `fileattachmentid` is both `Computed` and `Optional`. It's genuinely user-settable for file-type fields (you can point an existing attachment at this field), and populated automatically for non-file fields.
+
 ## Delete Secret by ID
 
 The `tss_secret_deletion` resource allows you to delete secrets by their ID, even if they are not managed by Terraform state.
