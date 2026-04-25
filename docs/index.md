@@ -68,3 +68,19 @@ $ terraform plan
   - `password` (String) The password of the Secret Server User
 - Token authentication
   - `token` (String) An OAuth token to authenticate with the Secret Server
+
+### Optional
+
+- `http_headers` (Map of String, Sensitive) Additional HTTP headers to include in every API request. Useful when Secret Server is behind a reverse proxy that requires extra headers, e.g. service tokens.
+
+```terraform
+provider "tss" {
+  server_url = "https://secretserver.example.com/SecretServer"
+  username   = "my_app_user"
+  password   = "Passw0rd."
+
+  http_headers = {
+    "HeaderName" = "HeaderValue"
+  }
+}
+```
