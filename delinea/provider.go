@@ -20,11 +20,12 @@ type TSSProvider struct{}
 
 // Define the provider schema model
 type TSSProviderModel struct {
-	ServerURL types.String `tfsdk:"server_url"`
-	Username  types.String `tfsdk:"username"`
-	Password  types.String `tfsdk:"password"`
-	Token     types.String `tfsdk:"token"`
-	Domain    types.String `tfsdk:"domain"`
+	ServerURL   types.String `tfsdk:"server_url"`
+	Username    types.String `tfsdk:"username"`
+	Password    types.String `tfsdk:"password"`
+	Token       types.String `tfsdk:"token"`
+	Domain      types.String `tfsdk:"domain"`
+	HTTPHeaders types.Map    `tfsdk:"http_headers"`
 }
 
 // Ensure the provider implements the ProviderWithEphemeralResources interface
@@ -60,6 +61,12 @@ func (p *TSSProvider) Schema(ctx context.Context, req provider.SchemaRequest, re
 			"domain": schema.StringAttribute{
 				Optional:    true,
 				Description: "Domain of the Secret Server user",
+			},
+			"http_headers": schema.MapAttribute{
+				Optional:    true,
+				Sensitive:   true,
+				ElementType: types.StringType,
+				Description: "Additional HTTP headers to include in every API request",
 			},
 		},
 	}
@@ -111,6 +118,21 @@ func (p *TSSProvider) Configure(ctx context.Context, req provider.ConfigureReque
 			Token:    config.Token.ValueString(),
 			Domain:   config.Domain.ValueString(),
 		},
+	}
+
+	// Configure extra HTTP headers if provided
+	if !config.HTTPHeaders.IsNull() && !config.HTTPHeaders.IsUnknown() {
+		headerElements := config.HTTPHeaders.Elements()
+		headers := make(map[string]string, len(headerElements))
+		for k, v := range headerElements {
+			if sv, ok := v.(types.String); ok {
+				headers[k] = sv.ValueString()
+			}
+		}
+		if len(headers) > 0 {
+			log.Printf("Configuring %d custom HTTP header(s)", len(headers))
+			configureExtraHeaders(headers)
+		}
 	}
 
 	// Pass the server configuration to resources and data sources
