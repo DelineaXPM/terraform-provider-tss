@@ -56,9 +56,7 @@ Required:
 
 Optional:
 
-- `fielddescription` (String)
-- `fieldid` (Number)
-- `fileattachmentid` (Number)
+- `fileattachmentid` (Number) File attachment ID. Only meaningful for file-type fields; genuinely user-settable there as an alternative to uploading a new file.
 - `filename` (String)
 - `isfile` (Boolean)
 - `islist` (Boolean)
@@ -69,7 +67,13 @@ Optional:
 - `password_value` (String, Sensitive, Write-only) Password value for password fields. Never stored in Terraform state. Requires Terraform 1.11+. Pair with `password_wo_version` to trigger rotation.
 - `password_wo_version` (Number) Rotation trigger for `password_value` or `generate`. Bump this integer to signal Terraform to re-send `password_value` to Secret Server, or to ask for a new generated password when `generate=true`, on the next apply.
 - `generate` (Boolean) Request server-side password generation from the template's password-requirement policy. Only honored on fields the template marks as password fields. Mutually exclusive with `password_value` and `itemvalue`. Pair with `password_wo_version` to rotate. Closes [GitHub issue #110](https://github.com/DelineaXPM/terraform-provider-tss/issues/110).
-- `slug` (String)
+
+Read-Only:
+
+- `fielddescription` (String) Field description from the template. Populated after apply; do not set in config.
+- `fieldid` (Number) Secret Server template field ID; stable per template, shared across every secret that uses the template. Populated after apply; do not set in config.
+- `itemid` (Number) Server-assigned database ID of this field-value record. Populated after apply; do not set in config.
+- `slug` (String) Field's URL slug, assigned by the template. Populated after apply; do not set in config.
 
 
 <a id="nestedblock--sshkeyargs"></a>
@@ -141,3 +145,16 @@ resource "tss_resource_secret" "example" {
 ```
 
 To rotate the password, change `password_value` and bump `password_wo_version` (any new integer) in the same apply. The provider detects the version change and pushes the new value to Secret Server. See the README's "Password handling" section for the full guarantees and the upgrade path from pre-v4.0.0 state files.
+
+### Computed Fields
+
+Each `fields` block has attributes that Secret Server assigns automatically after `terraform apply`. They appear in Terraform state but are not user-settable:
+
+- `itemid` — database ID of this field-value record. Auto-assigned by Secret Server; sequential per newly-created secret.
+- `fieldid` — the template field ID. Stable per template, shared across every secret that uses the template. Not sequential.
+- `slug` — the field's URL slug, assigned by the template.
+- `fielddescription` — the field description, set by the template.
+
+Setting any of these four in your config produces a plan error ("Can't configure a value for `itemid`: its value will be decided automatically based on the result of applying this configuration"). That's the signal that these are server-assigned — leave them out.
+
+One exception: `fileattachmentid` is both `Computed` and `Optional`. It's genuinely user-settable for file-type fields (you can point an existing attachment at this field), and populated automatically for non-file fields.

@@ -508,24 +508,25 @@ func (r *TSSSecretResource) Schema(ctx context.Context, req resource.SchemaReque
 							Description: "Request server-side password generation from the template's password-requirement policy (closes gh #110). Only honored on fields the template marks as password fields. Mutually exclusive with password_value and itemvalue. Pair with password_wo_version to rotate the generated password.",
 						},
 						"itemid": schema.Int64Attribute{
-							Optional: true,
-							Computed: true,
+							Computed:    true,
+							Description: "Server-assigned database ID of this field-value record. Populated after apply; do not set in config.",
 						},
 						"fieldid": schema.Int64Attribute{
-							Optional: true,
-							Computed: true,
+							Computed:    true,
+							Description: "Secret Server template field ID; stable per template, shared across every secret that uses the template. Populated after apply; do not set in config.",
 						},
 						"fileattachmentid": schema.Int64Attribute{
-							Optional: true,
-							Computed: true,
+							Optional:    true,
+							Computed:    true,
+							Description: "File attachment ID. Only meaningful for file-type fields; genuinely user-settable there as an alternative to uploading a new file.",
 						},
 						"slug": schema.StringAttribute{
-							Optional: true,
-							Computed: true,
+							Computed:    true,
+							Description: "Field's URL slug, assigned by the template. Populated after apply; do not set in config.",
 						},
 						"fielddescription": schema.StringAttribute{
-							Optional: true,
-							Computed: true,
+							Computed:    true,
+							Description: "Field description from the template. Populated after apply; do not set in config.",
 						},
 						"filename": schema.StringAttribute{
 							Optional: true,
