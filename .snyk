@@ -1,0 +1,26 @@
+# Snyk policy file.
+# No `expires:` field is set on the ignore below: the rationale is
+# structural (the attack surface does not exist for a Terraform
+# provider), so a periodic re-review would only re-confirm the same
+# conclusion.
+version: v1.0.0
+ignore:
+  SNYK-GOLANG-GITHUBCOMVMIHAILENCOMSGPACKV5-15702238:
+    - '*':
+        reason: >-
+          CVE-2026-2454 in github.com/vmihailenco/msgpack/v5 v5.4.1.
+          The advisory describes the attack vector as "websocket messages
+          containing malformed msgpack frames" causing excessive memory
+          consumption and a server crash. This Terraform provider does
+          not accept untrusted msgpack input over a network: msgpack is
+          used only inside the gRPC plugin protocol between the trusted
+          Terraform CLI parent process and this provider. The described
+          attack surface does not apply.
+
+          The provider's use of msgpack is mediated entirely by the
+          Terraform plugin gRPC protocol; we do not parse arbitrary
+          msgpack from any other source, and there is no path by which
+          a network attacker could deliver a malformed msgpack frame to
+          this binary. This is a structural property of how Terraform
+          providers run, so the conclusion is not expected to change.
+        created: 2026-04-30
