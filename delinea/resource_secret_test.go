@@ -257,6 +257,39 @@ func TestAlignFieldsToReference_NullPasswordWoVersionInReferenceStaysNull(t *tes
 	}
 }
 
+func TestAlignFieldsToReference_PreservesGenerateFromReference(t *testing.T) {
+	apiResponse := []SecretField{
+		{FieldName: types.StringValue("Password"), Generate: types.BoolNull()},
+	}
+	userConfig := []SecretField{
+		{FieldName: types.StringValue("Password"), Generate: types.BoolValue(true)},
+	}
+
+	got := alignFieldsToReference(apiResponse, userConfig)
+
+	if len(got) != 1 {
+		t.Fatalf("got %d fields, want 1", len(got))
+	}
+	if !got[0].Generate.ValueBool() {
+		t.Fatalf("got generate=%v, want true", got[0].Generate)
+	}
+}
+
+func TestAlignFieldsToReference_NullGenerateInReferenceStaysNull(t *testing.T) {
+	apiResponse := []SecretField{
+		{FieldName: types.StringValue("Password"), Generate: types.BoolNull()},
+	}
+	userConfig := []SecretField{
+		{FieldName: types.StringValue("Password"), Generate: types.BoolNull()},
+	}
+
+	got := alignFieldsToReference(apiResponse, userConfig)
+
+	if !got[0].Generate.IsNull() {
+		t.Fatalf("got generate=%v, want null", got[0].Generate)
+	}
+}
+
 func TestFlattenSecret_NullsItemValueForPasswordFields(t *testing.T) {
 	secret := &server.Secret{
 		ID:   42,

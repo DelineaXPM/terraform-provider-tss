@@ -156,6 +156,33 @@ fields {
 
 On plan, Terraform sees the `password_wo_version` change and schedules an update; on apply, the provider reads `password_value` from config and sends it to Secret Server. Any new integer works — only the change is significant.
 
+### Server-side password generation
+
+If you don't want to supply a password value yourself, set `generate = true` on the field. The provider asks Secret Server for a password matching the template's password-requirement policy and uses that value:
+
+```hcl
+resource "tss_resource_secret" "db" {
+  name             = "db-prod"
+  folderid         = "42"
+  siteid           = "1"
+  secrettemplateid = "2"
+
+  fields {
+    fieldname = "Username"
+    itemvalue = "dbadmin"
+  }
+  fields {
+    fieldname           = "Password"
+    generate            = true
+    password_wo_version = 1
+  }
+}
+```
+
+`generate` is mutually exclusive with `password_value` and (for password fields) `itemvalue` — the provider rejects configs that set both. Rotation works the same way as for `password_value`: bump `password_wo_version` to ask for a new generated password on the next apply. Re-applying with the same `password_wo_version` is a no-op (no API call to the generate endpoint, no rotation).
+
+The generated password reaches Secret Server through the normal create/update flow. It never lands in `terraform.tfstate` because `flattenSecret` nulls `itemvalue` for fields the template marks `IsPassword`.
+
 ### Guarantees and caveats
 
 - `terraform.tfstate` contains no plaintext password. Post-apply, `itemvalue` is `null` for any field the template marks `IsPassword`.
