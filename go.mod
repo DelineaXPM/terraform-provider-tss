@@ -11,10 +11,7 @@ require (
 
 require github.com/hashicorp/terraform-plugin-log v0.10.0 // indirect
 
-require (
-	github.com/hashicorp/terraform-plugin-framework-validators v0.19.0
-	github.com/hashicorp/terraform-plugin-testing v1.15.0
-)
+require github.com/hashicorp/terraform-plugin-testing v1.15.0
 
 require (
 	github.com/ProtonMail/go-crypto v1.3.0 // indirect

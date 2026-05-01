@@ -3,12 +3,11 @@ package delinea
 import (
 	"context"
 	"log"
+	"os"
 
 	"github.com/DelineaXPM/tss-sdk-go/v2/server"
-	"github.com/hashicorp/terraform-plugin-framework-validators/providervalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/ephemeral"
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -40,41 +39,28 @@ func (p *TSSProvider) Schema(ctx context.Context, req provider.SchemaRequest, re
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"server_url": schema.StringAttribute{
-				Required:    true,
-				Description: "The Secret Server base URL e.g. https://localhost/SecretServer",
+				Optional:    true,
+				Description: "The Secret Server base URL e.g. https://localhost/SecretServer. May also be supplied via the TSS_SERVER_URL environment variable.",
 			},
 			"username": schema.StringAttribute{
 				Optional:    true,
-				Description: "The username of the Secret Server User to connect as",
+				Description: "The username of the Secret Server User to connect as. May also be supplied via the TSS_USERNAME environment variable.",
 			},
 			"password": schema.StringAttribute{
 				Optional:    true,
 				Sensitive:   true,
-				Description: "The password of the Secret Server User",
+				Description: "The password of the Secret Server User. May also be supplied via the TSS_PASSWORD environment variable.",
 			},
 			"token": schema.StringAttribute{
 				Optional:    true,
 				Sensitive:   true,
-				Description: "A token to authenticate the Secret Server User",
+				Description: "A token to authenticate the Secret Server User. May also be supplied via the TSS_TOKEN environment variable.",
 			},
 			"domain": schema.StringAttribute{
 				Optional:    true,
-				Description: "Domain of the Secret Server user",
+				Description: "Domain of the Secret Server user. May also be supplied via the TSS_DOMAIN environment variable.",
 			},
 		},
-	}
-}
-
-func (p *TSSProvider) ConfigValidators(ctx context.Context) []provider.ConfigValidator {
-	return []provider.ConfigValidator {
-			providervalidator.RequiredTogether(
-				path.MatchRoot("username"),
-				path.MatchRoot("password"),
-			),
-			providervalidator.ExactlyOneOf(
-				path.MatchRoot("username"),
-				path.MatchRoot("token"),
-			),
 	}
 }
 
@@ -82,10 +68,8 @@ func (p *TSSProvider) ConfigValidators(ctx context.Context) []provider.ConfigVal
 func (p *TSSProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
 	var config TSSProviderModel
 
-	// Log the start of the Configure method
 	log.Printf("Starting Configure method")
 
-	// Read configuration values into the config struct
 	diags := req.Config.Get(ctx, &config)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -94,25 +78,77 @@ func (p *TSSProvider) Configure(ctx context.Context, req provider.ConfigureReque
 		return
 	}
 
-	// Log the configuration values
-	log.Printf("Provider configuration values retrieved: server_url=%s username=%s",
-		config.ServerURL.ValueString(), config.Username.ValueString())
+	resolved, errs := resolveProviderConfig(config, os.Getenv)
+	for _, e := range errs {
+		resp.Diagnostics.AddError("Configuration Error", e)
+	}
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
-	// Create the server configuration
+	log.Printf("Provider configuration values retrieved: server_url=%s username=%s",
+		resolved.ServerURL.ValueString(), resolved.Username.ValueString())
+
 	serverConfig := &server.Configuration{
-		ServerURL: config.ServerURL.ValueString(),
+		ServerURL: resolved.ServerURL.ValueString(),
 		Credentials: server.UserCredential{
-			Username: config.Username.ValueString(),
-			Password: config.Password.ValueString(),
-			Token:    config.Token.ValueString(),
-			Domain:   config.Domain.ValueString(),
+			Username: resolved.Username.ValueString(),
+			Password: resolved.Password.ValueString(),
+			Token:    resolved.Token.ValueString(),
+			Domain:   resolved.Domain.ValueString(),
 		},
 	}
 
-	// Pass the server configuration to resources and data sources
 	resp.DataSourceData = serverConfig
 	resp.ResourceData = serverConfig
 	resp.EphemeralResourceData = serverConfig
+}
+
+// resolveProviderConfig fills in unset config fields from environment
+// variables and validates the resulting credentials. Documented precedence
+// is explicit config > environment variable > unset. Closes gh #108.
+//
+// Returns the resolved config and a slice of error messages (empty on
+// success). Pulled out of Configure for unit-testability — getenv is
+// injected so tests don't need to mutate process env.
+func resolveProviderConfig(config TSSProviderModel, getenv func(string) string) (TSSProviderModel, []string) {
+	fallback := func(current types.String, envVar string) types.String {
+		if !current.IsNull() && current.ValueString() != "" {
+			return current
+		}
+		if v := getenv(envVar); v != "" {
+			return types.StringValue(v)
+		}
+		return current
+	}
+
+	config.ServerURL = fallback(config.ServerURL, "TSS_SERVER_URL")
+	config.Username = fallback(config.Username, "TSS_USERNAME")
+	config.Password = fallback(config.Password, "TSS_PASSWORD")
+	config.Token = fallback(config.Token, "TSS_TOKEN")
+	config.Domain = fallback(config.Domain, "TSS_DOMAIN")
+
+	var errs []string
+	hasServerURL := !config.ServerURL.IsNull() && config.ServerURL.ValueString() != ""
+	hasUsername := !config.Username.IsNull() && config.Username.ValueString() != ""
+	hasPassword := !config.Password.IsNull() && config.Password.ValueString() != ""
+	hasToken := !config.Token.IsNull() && config.Token.ValueString() != ""
+
+	if !hasServerURL {
+		errs = append(errs, "Server URL is required: set the `server_url` provider attribute or the TSS_SERVER_URL environment variable.")
+	}
+	switch {
+	case hasUsername && hasToken:
+		errs = append(errs, "Provide either username/password OR token, not both. Set exactly one of: (username + password) or token; values may come from provider config or the corresponding TSS_* environment variables.")
+	case !hasUsername && !hasToken:
+		errs = append(errs, "Credentials missing: set username + password or token. Values may come from provider config or the corresponding TSS_* environment variables (TSS_USERNAME / TSS_PASSWORD / TSS_TOKEN).")
+	case hasUsername && !hasPassword:
+		errs = append(errs, "Username is set but password is missing. Set the `password` provider attribute or the TSS_PASSWORD environment variable.")
+	case !hasUsername && hasPassword:
+		errs = append(errs, "Password is set but username is missing. Set the `username` provider attribute or the TSS_USERNAME environment variable.")
+	}
+
+	return config, errs
 }
 
 // DataSources returns the data sources supported by the provider

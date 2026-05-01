@@ -37,34 +37,47 @@ tss_server_url = "https://localhost/SecretServer"
 tss_secret_id  = "1"
 ```
 
-# Environment variables
+## Environment variables
 
-You can provide your credentials via the TSS_SERVER_URL, TSS_USERNAME and TSS_PASSWORD environment variables.
-In this case, tss provider could be represented like this 
-```
+Each provider attribute resolves in the order *explicit provider attribute > environment variable > unset*. With the env vars exported, the provider block can be empty:
+
+| Env var          | Provider attribute |
+|------------------|--------------------|
+| `TSS_SERVER_URL` | `server_url`       |
+| `TSS_USERNAME`   | `username`         |
+| `TSS_PASSWORD`   | `password`         |
+| `TSS_TOKEN`      | `token`            |
+| `TSS_DOMAIN`     | `domain`           |
+
+```terraform
 provider "tss" {}
 ```
-Usage
-```
+
+Username/password:
+
+```shell
+$ export TSS_SERVER_URL="https://localhost/SecretServer"
 $ export TSS_USERNAME="my_app_user"
 $ export TSS_PASSWORD="Passw0rd."
-$ export TSS_SERVER_URL="https://localhost/SecretServer"
 $ terraform plan
 ```
 
-Alternatively, an OAuth API token can be provided instead of a username and password:
+OAuth token instead of username/password:
 
-```
+```shell
+$ export TSS_SERVER_URL="https://localhost/SecretServer"
 $ export TSS_TOKEN="PASTE_TOKEN_HERE"
-$ export TSS_SERVER_URL="https://localhost/SecretServer"
 $ terraform plan
 ```
 
-### Required
+After the env-var fallback runs, the provider enforces that `server_url` is set and that exactly one of `(username + password)` or `token` is set.
 
-- `server_url` (String) The Secret Server base URL e.g. https://localhost/SecretServer
-- Username/password authentication:
-  - `username` (String) The username of the Secret Server User to connect as
-  - `password` (String) The password of the Secret Server User
-- Token authentication
-  - `token` (String) An OAuth token to authenticate with the Secret Server
+## Schema
+
+### Optional
+
+- `server_url` (String) The Secret Server base URL e.g. https://localhost/SecretServer. May also be supplied via the `TSS_SERVER_URL` environment variable.
+- `username` (String) The username of the Secret Server User to connect as. May also be supplied via the `TSS_USERNAME` environment variable.
+- `password` (String, Sensitive) The password of the Secret Server User. May also be supplied via the `TSS_PASSWORD` environment variable.
+- `token` (String, Sensitive) An OAuth token to authenticate with the Secret Server. May also be supplied via the `TSS_TOKEN` environment variable.
+- `domain` (String) Domain of the Secret Server user (Active Directory accounts). May also be supplied via the `TSS_DOMAIN` environment variable.
