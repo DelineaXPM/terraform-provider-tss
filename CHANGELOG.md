@@ -6,6 +6,8 @@ For the release history prior to v4.0.0, see the [GitHub Releases](https://githu
 
 ## [Unreleased]
 
+## [v4.0.0] - 2026-06-09
+
 ### Breaking
 
 - Documented Terraform floor raised from 0.13 to **1.11**. `tss_resource_secret`'s new write-only password attribute requires Terraform 1.11. `README.md`, `docs/index.md`, and `examples/secrets/*.tf` (7 example configurations) updated accordingly. Users on Terraform &lt; 1.11 will see an `Unsupported Terraform Core version` error at `terraform init` once on v4.0.0.
@@ -47,4 +49,5 @@ For the release history prior to v4.0.0, see the [GitHub Releases](https://githu
 - `flattenSecret` block-count mismatch on partial-fields configs (`delinea/resource_secret.go`). Threaded a reference-fields list through `readSecretByID`; callers pass `plan.Fields` (Create/Update) or `state.Fields` (Read); case-insensitive match; nil reference disables filtering. Resolves "Provider produced inconsistent result after apply" (block count N → M) on configs that specify only a subset of the template's fields. Adds unit tests and three `Example_*` functions documenting the scenarios.
 - Password values no longer land in `terraform.tfstate` or `terraform show -json` (PBI 700142). `flattenSecret` now writes `types.StringNull()` for `itemvalue` when the API response indicates `IsPassword == true`; `getSecretData` routes `password_value` → API payload (with `itemvalue` as legacy fallback), and omits the field from the Update payload entirely when no new password is supplied so TSS preserves the existing server-side value. Removes a stray `FileAttachmentID = strconv.Atoi(ItemValue)` parse that could corrupt `FileAttachmentID` on numeric passwords. `alignFieldsToReference` preserves `password_wo_version` from reference (TSS does not round-trip it).
 
-[Unreleased]: https://github.com/DelineaXPM/terraform-provider-tss/compare/v3.1.1...HEAD
+[Unreleased]: https://github.com/DelineaXPM/terraform-provider-tss/compare/v4.0.0...HEAD
+[v4.0.0]: https://github.com/DelineaXPM/terraform-provider-tss/compare/v3.1.1...v4.0.0
