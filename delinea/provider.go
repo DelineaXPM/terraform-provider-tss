@@ -90,7 +90,7 @@ func (p *TSSProvider) Configure(ctx context.Context, req provider.ConfigureReque
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		resp.Diagnostics.AddError("Configuration Error", "Failed to read provider configuration")
-		log.Printf("Failed to read provider configuration: %v", resp.Diagnostics)
+		log.Printf("Failed to read provider configuration: %s", resp.Diagnostics)
 		return
 	}
 

@@ -134,7 +134,7 @@ func (r *TSSSecretResource) Create(ctx context.Context, req resource.CreateReque
 	fmt.Printf("Secret is Created successfully...!")
 
 	// Refresh state - let Terraform accept the computed values from the server
-	newState, readDiags := r.readSecretByID(ctx, createdSecret.ID, client)
+	newState, readDiags := r.readSecretByID(ctx, createdSecret.ID, client, plan.Fields)
 	resp.Diagnostics.Append(readDiags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -270,7 +270,7 @@ func (r *TSSSecretResource) Update(ctx context.Context, req resource.UpdateReque
 	fmt.Printf("Secret is Updated successfully...!")
 
 	//Refresh state
-	newState, readDiags := r.readSecretByID(ctx, updatedSecret.ID, client)
+	newState, readDiags := r.readSecretByID(ctx, updatedSecret.ID, client, plan.Fields)
 	resp.Diagnostics.Append(readDiags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -578,7 +578,7 @@ func (r *TSSSecretResource) Read(ctx context.Context, req resource.ReadRequest, 
 	}
 
 	// Retrieve the secret
-	newState, readDiags := r.readSecretByID(ctx, int(state.ID.ValueInt64()), client)
+	newState, readDiags := r.readSecretByID(ctx, int(state.ID.ValueInt64()), client, state.Fields)
 	resp.Diagnostics.Append(readDiags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -627,7 +627,7 @@ func (r *TSSSecretResource) Read(ctx context.Context, req resource.ReadRequest, 
 	resp.Diagnostics.Append(diags...)
 }
 
-func (r *TSSSecretResource) readSecretByID(ctx context.Context, id int, client *server.Server) (*SecretResourceState, diag.Diagnostics) {
+func (r *TSSSecretResource) readSecretByID(ctx context.Context, id int, client *server.Server, reference []SecretField) (*SecretResourceState, diag.Diagnostics) {
 	// Create the server client
 	client, err := server.New(*r.clientConfig)
 	if err != nil {
@@ -651,7 +651,31 @@ func (r *TSSSecretResource) readSecretByID(ctx context.Context, id int, client *
 		}
 	}
 
+	state.Fields = alignFieldsToReference(state.Fields, reference)
+
 	return state, nil
+}
+
+// alignFieldsToReference returns fields whose names appear in reference, in reference
+// order. Used so post-apply state mirrors the fields the user specified in config;
+// without this, TSS templates that define more fields than the user listed would
+// trigger Terraform's "Provider produced inconsistent result after apply" error.
+// A nil reference disables filtering (returns fields unchanged).
+func alignFieldsToReference(fields []SecretField, reference []SecretField) []SecretField {
+	if reference == nil {
+		return fields
+	}
+	byName := make(map[string]SecretField, len(fields))
+	for _, f := range fields {
+		byName[strings.ToLower(f.FieldName.ValueString())] = f
+	}
+	aligned := make([]SecretField, 0, len(reference))
+	for _, r := range reference {
+		if f, ok := byName[strings.ToLower(r.FieldName.ValueString())]; ok {
+			aligned = append(aligned, f)
+		}
+	}
+	return aligned
 }
 
 func (r *TSSSecretResource) getSecretData(ctx context.Context, state *SecretResourceState, client *server.Server) (*server.Secret, error) {
