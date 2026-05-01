@@ -205,6 +205,32 @@ Setting any of these four in your config produces a plan error ("Can't configure
 
 One exception: `fileattachmentid` is both `Computed` and `Optional`. It's genuinely user-settable for file-type fields (you can point an existing attachment at this field), and populated automatically for non-file fields.
 
+## Upgrading state from earlier provider versions
+
+### From v3.x to v4.0.0
+
+`terraform-provider-tss` v4.0.0 versions the schema (`Version: 1`) and ships a state upgrader that runs automatically the first time `terraform plan` is invoked against existing v3.x state. No user action is required. The upgrader carries every existing field across and leaves the new v4 attributes (`password_value`, `password_wo_version`, `generate`) at their null defaults.
+
+If you used `itemvalue` to supply a password on a `tss_resource_secret` field, the post-upgrade plan will show the value being null'd in state (because v4 nulls `itemvalue` for `IsPassword` fields). The first apply pushes that null to nothing — your password in TSS is unchanged. Migrate the password to `password_value` + `password_wo_version` at your convenience to avoid the perpetual diff that the legacy `itemvalue` path produces.
+
+### From v2.x to v4.0.0
+
+**v2.x and v4.0.0 are not directly compatible at the state level.** v2.x used Terraform's older Plugin SDKv2; v3+ switched to the modern Plugin Framework, which uses a different on-disk state shape. v4.0.0 does not include a v2 → v4 upgrader — translating SDKv2 state to framework state is substantial separate work that we have deferred.
+
+If you are still on v2.x, choose one of the following paths:
+
+1. **Stay on v2.x.** Reasonable for stable production where the resource isn't actively churning and the security/feature additions in v3+ aren't required. v2.x continues to function indefinitely against TSS.
+
+2. **Drop and recreate state** (recommended for most v2 → v4 migrations):
+   - For each affected resource: `terraform state rm tss_resource_secret.X`
+   - Adjust your config so the recreated resource doesn't collide on `name` with the existing secret in TSS, **or** delete the corresponding secret from TSS first.
+   - `terraform apply` recreates the resource fresh, recorded under v4 state.
+   - **Caveat:** any secret you delete from TSS to avoid a name collision is permanently gone; back up first.
+
+3. **Manual state surgery.** Edit `terraform.tfstate` to convert SDKv2 shape to framework shape and bump `schema_version` to `1`. Risky, unsupported, requires understanding both shapes — only suitable for experienced operators with reliable backups.
+
+There is no automatic path from v2.x state to v4 today. If your scenario isn't served by 1–3 above, please file a GitHub issue.
+
 ## Delete Secret by ID
 
 The `tss_secret_deletion` resource allows you to delete secrets by their ID, even if they are not managed by Terraform state.
