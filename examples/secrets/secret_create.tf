@@ -1,9 +1,9 @@
 terraform {
-  required_version = "1.12.1"
+  required_version = ">= 1.11.0"
   required_providers {
     tss = {
       source = "DelineaXPM/tss"
-      version = "3.0.0"
+      version = ">= 4.0.0"
     }
   }
 }
@@ -38,9 +38,19 @@ variable "tss_secret_templateid" {
 
 variable "fields" {
   type = list(object({
-    itemvalue = optional(string, "")
-    fieldname = string
+    itemvalue      = optional(string, "")
+    fieldname      = string
+    is_password    = optional(bool, false)
+    password_value = optional(string)
   }))
+  description = "Each entry describes one template field. For password fields, set is_password = true and supply password_value instead of itemvalue — the value is write-only and will not be written to Terraform state."
+  sensitive   = true
+}
+
+variable "password_wo_version" {
+  type        = number
+  description = "Rotation trigger for write-only password fields. Bump this (to any new integer) to signal that password_value has changed and must be re-sent to TSS on the next apply."
+  default     = 1
 }
 
 variable "ssh_key_fields" {
@@ -77,8 +87,16 @@ resource "tss_resource_secret" "secret_name" {
     for_each = var.fields
     content {
       fieldname = fields.value.fieldname
-      # Only set itemvalue if SSH key generation is disabled OR if this is not an SSH key field
-      itemvalue = (var.generate_ssh_keys && contains(var.ssh_key_fields, fields.value.fieldname)) ? null : fields.value.itemvalue
+      # Password fields: send via write-only password_value (never lands in state).
+      # SSH key fields when generating: leave null so the server fills in.
+      # Everything else: pass through itemvalue unchanged.
+      itemvalue = (
+        fields.value.is_password ? null :
+        (var.generate_ssh_keys && contains(var.ssh_key_fields, fields.value.fieldname)) ? null :
+        fields.value.itemvalue
+      )
+      password_value      = fields.value.is_password ? fields.value.password_value : null
+      password_wo_version = fields.value.is_password ? var.password_wo_version : null
     }
   }
   

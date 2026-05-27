@@ -64,8 +64,10 @@ Optional:
 - `islist` (Boolean)
 - `isnotes` (Boolean)
 - `ispassword` (Boolean)
-- `itemvalue` (String)
+- `itemvalue` (String, Sensitive) The value of the field. For password fields, prefer `password_value` — `itemvalue` is nulled in state on read, which produces a perpetual diff if used for a password.
 - `listtype` (String)
+- `password_value` (String, Sensitive, Write-only) Password value for password fields. Never stored in Terraform state. Requires Terraform 1.11+. Pair with `password_wo_version` to trigger rotation.
+- `password_wo_version` (Number) Rotation trigger for `password_value`. Bump this integer to signal Terraform to re-send `password_value` to Secret Server on the next apply.
 - `slug` (String)
 
 
@@ -113,3 +115,28 @@ Above Create/Update Secret variables are for Windows Account secret template of 
 3. Click on Fields tab
 4. Based on template fields add/update field (with field name and item value) in fields array as above example. In above example there are four fields but in other template
    there might be more/less flieds. Accordingly, add/remove field entry from the fields array.
+
+### Password Fields (write-only, Terraform 1.11+)
+
+For any field whose template marks `IsPassword`, use `password_value` instead of `itemvalue`. `password_value` is write-only — Terraform never writes it to state — and `password_wo_version` is the rotation trigger.
+
+```hcl
+resource "tss_resource_secret" "example" {
+  name             = "example"
+  folderid         = "5"
+  siteid           = "1"
+  secrettemplateid = "2"
+
+  fields {
+    fieldname = "Username"
+    itemvalue = "myuser"
+  }
+  fields {
+    fieldname           = "Password"
+    password_value      = var.db_password
+    password_wo_version = 1
+  }
+}
+```
+
+To rotate the password, change `password_value` and bump `password_wo_version` (any new integer) in the same apply. The provider detects the version change and pushes the new value to Secret Server. See the README's "Password handling" section for the full guarantees and the upgrade path from pre-v4.0.0 state files.

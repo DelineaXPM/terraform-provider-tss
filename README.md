@@ -10,11 +10,11 @@ The latest release can be [downloaded from the terraform registry](https://regis
 
 If wish to install straight from source, follow the steps below.
 
-## Install form Source
+## Install from Source
 
-### Terraform 0.13 and later
+### Terraform 1.11 and later
 
-Terraform 0.13 uses a different file system layout for 3rd party providers. More information on this can be found [here](https://www.terraform.io/upgrade-guides/0-13.html#new-filesystem-layout-for-local-copies-of-providers). The following folder path will need to be created in the plugins directory of the user's profile.
+This provider requires **Terraform 1.11 or later**. The write-only attribute support used by `password_value` on `tss_resource_secret` is a Terraform 1.11 core feature; earlier versions will reject the schema. To install a local build, place the provider binary under the standard plugins directory for your OS:
 
 #### Windows
 
@@ -23,7 +23,7 @@ Terraform 0.13 uses a different file system layout for 3rd party providers. More
 └───terraform.delinea.com
     DelineaXPM
         └───tss
-            └───3.0.0
+            └───4.0.0
                 └───windows_amd64
 ```
 
@@ -34,20 +34,21 @@ Terraform 0.13 uses a different file system layout for 3rd party providers. More
 └───terraform.delinea.com
     DelineaXPM
         └───tss
-            └───3.0.0
+            └───4.0.0
                 ├───linux_amd64
 ```
 
 ## Usage
 
-For Terraform 0.13+, include the `terraform` block in your configuration, or plan, that specifies the provider:
+Include the `terraform` block in your configuration, or plan, that specifies the Terraform version and provider:
 
 ```terraform
 terraform {
+  required_version = ">= 1.11.0"
   required_providers {
     tss = {
-      source = "DelineaXPM/tss"
-      version = "~> 2.0"
+      source  = "DelineaXPM/tss"
+      version = ">= 4.0.0"
     }
   }
 }
@@ -113,6 +114,56 @@ Above Create/Update Secret variables are for Windows Account secret template of 
 Delete Secret:
 
 This functionality deactivates the secret in Delinea Secret Server.
+
+## Password handling (`tss_resource_secret`)
+
+Password fields on `tss_resource_secret` use Terraform's write-only attribute mechanism to keep the value out of Terraform state. Use the `password_value` attribute for any field where the template has `IsPassword` set (e.g. the `Password` field on the built-in Password template).
+
+### Setting a password on a new secret
+
+```hcl
+resource "tss_resource_secret" "example" {
+  name             = "example"
+  folderid         = "5"
+  siteid           = "1"
+  secrettemplateid = "2"
+
+  fields {
+    fieldname = "Username"
+    itemvalue = "myuser"
+  }
+  fields {
+    fieldname           = "Password"
+    password_value      = var.db_password
+    password_wo_version = 1
+  }
+}
+```
+
+`password_value` is write-only: it is sent to Secret Server on create/update but never written to `terraform.tfstate` or emitted by `terraform show -json`. Because Terraform cannot compare a value that isn't in state, the provider uses `password_wo_version` as an explicit rotation trigger.
+
+### Rotating a password
+
+Change both attributes together and apply:
+
+```hcl
+fields {
+  fieldname           = "Password"
+  password_value      = var.db_password_new     # new value
+  password_wo_version = 2                        # bumped from 1
+}
+```
+
+On plan, Terraform sees the `password_wo_version` change and schedules an update; on apply, the provider reads `password_value` from config and sends it to Secret Server. Any new integer works — only the change is significant.
+
+### Guarantees and caveats
+
+- `terraform.tfstate` contains no plaintext password. Post-apply, `itemvalue` is `null` for any field the template marks `IsPassword`.
+- `terraform show -json` does not emit the password value.
+- CLI plan/apply output masks the value because `password_value` and `itemvalue` are both marked `Sensitive`.
+- The password value still lives in your Terraform config. Use env vars, a TF Cloud sensitive variable, or a secret-backend data source for the actual input.
+- Legacy configs that set `itemvalue` on a password field still work, but `flattenSecret` now nulls the value in state, which produces a perpetual plan diff. Migrate those fields to `password_value` + `password_wo_version`.
+- Upgrading from v3.1.x or earlier: existing state files still contain plaintext passwords. The first `terraform apply` or `terraform refresh` after the upgrade will null them; no data loss, just state cleanup.
 
 ## Delete Secret by ID
 
@@ -233,7 +284,7 @@ Usage (For Windows)
 ## Ephemeral Resource
 
 This ephemeral resource fetches secret values from Delinea Secret Server at runtime without storing them in Terraform state. It is useful for handling sensitive secret data dynamically without persisting them. An ephemeral resource can be used as shown below.
-To support the Ephemeral Resource miniumum version of Terraform must be 1.10.5 and above.
+Ephemeral resources require Terraform 1.10.5 or later; this provider's overall floor is Terraform 1.11 (see above), which satisfies that requirement.
 
 Get Secret By ID:
 
