@@ -67,7 +67,8 @@ Optional:
 - `itemvalue` (String, Sensitive) The value of the field. For password fields, prefer `password_value` — `itemvalue` is nulled in state on read, which produces a perpetual diff if used for a password.
 - `listtype` (String)
 - `password_value` (String, Sensitive, Write-only) Password value for password fields. Never stored in Terraform state. Requires Terraform 1.11+. Pair with `password_wo_version` to trigger rotation.
-- `password_wo_version` (Number) Rotation trigger for `password_value`. Bump this integer to signal Terraform to re-send `password_value` to Secret Server on the next apply.
+- `password_wo_version` (Number) Rotation trigger for `password_value` or `generate`. Bump this integer to signal Terraform to re-send `password_value` to Secret Server, or to ask for a new generated password when `generate=true`, on the next apply.
+- `generate` (Boolean) Request server-side password generation from the template's password-requirement policy. Only honored on fields the template marks as password fields. Mutually exclusive with `password_value` and `itemvalue`. Pair with `password_wo_version` to rotate. Closes [GitHub issue #110](https://github.com/DelineaXPM/terraform-provider-tss/issues/110).
 - `slug` (String)
 
 

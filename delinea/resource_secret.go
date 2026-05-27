@@ -52,6 +52,7 @@ type SecretField struct {
 	ItemValue         types.String `tfsdk:"itemvalue"`
 	PasswordValue     types.String `tfsdk:"password_value"`
 	PasswordWoVersion types.Int64  `tfsdk:"password_wo_version"`
+	Generate          types.Bool   `tfsdk:"generate"`
 	ItemID            types.Int64  `tfsdk:"itemid"`
 	FieldID           types.Int64  `tfsdk:"fieldid"`
 	FileAttachmentID  types.Int64  `tfsdk:"fileattachmentid"`
@@ -500,7 +501,11 @@ func (r *TSSSecretResource) Schema(ctx context.Context, req resource.SchemaReque
 						},
 						"password_wo_version": schema.Int64Attribute{
 							Optional:    true,
-							Description: "Rotation trigger for password_value. Bump this integer to signal Terraform that the password_value has changed and should be re-sent to TSS; any new value is fine, only the change matters.",
+							Description: "Rotation trigger for password_value or generate. Bump this integer to signal Terraform that the password_value has changed and should be re-sent to TSS, or that a new password should be generated when generate=true; any new value is fine, only the change matters.",
+						},
+						"generate": schema.BoolAttribute{
+							Optional:    true,
+							Description: "Request server-side password generation from the template's password-requirement policy (closes gh #110). Only honored on fields the template marks as password fields. Mutually exclusive with password_value and itemvalue. Pair with password_wo_version to rotate the generated password.",
 						},
 						"itemid": schema.Int64Attribute{
 							Optional: true,
@@ -698,9 +703,9 @@ func mergeWriteOnlyFieldValues(plan, config []SecretField) {
 //
 // For each matched field, user-set attributes that the TSS API does not round-trip
 // are copied from the reference into the aligned result: password_wo_version is
-// the rotation trigger for the write-only password_value attribute, so it lives
-// only on the Terraform side and must be preserved from plan (on Create/Update)
-// or prior state (on Read).
+// the rotation trigger for the write-only password_value attribute, and generate
+// is the request-server-side-generation flag — both live only on the Terraform
+// side and must be preserved from plan (on Create/Update) or prior state (on Read).
 func alignFieldsToReference(fields []SecretField, reference []SecretField) []SecretField {
 	if reference == nil {
 		return fields
@@ -713,6 +718,7 @@ func alignFieldsToReference(fields []SecretField, reference []SecretField) []Sec
 	for _, r := range reference {
 		if f, ok := byName[strings.ToLower(r.FieldName.ValueString())]; ok {
 			f.PasswordWoVersion = r.PasswordWoVersion
+			f.Generate = r.Generate
 			aligned = append(aligned, f)
 		}
 	}
@@ -754,11 +760,30 @@ func (r *TSSSecretResource) getSecretData(ctx context.Context, state *SecretReso
 			}
 		}
 
+		hasGenerate := !field.Generate.IsNull() && field.Generate.ValueBool()
 		hasPasswordValue := !field.PasswordValue.IsNull() && field.PasswordValue.ValueString() != ""
 		hasItemValue := !field.ItemValue.IsNull() && field.ItemValue.ValueString() != ""
 
+		if hasGenerate {
+			if !templateField.IsPassword {
+				return nil, fmt.Errorf("field %q has generate=true but is not a password field on template %q; only fields with isPassword=true support template-policy generation", fieldName, template.Name)
+			}
+			if hasPasswordValue {
+				return nil, fmt.Errorf("field %q has both generate=true and password_value set; they are mutually exclusive", fieldName)
+			}
+			if hasItemValue {
+				return nil, fmt.Errorf("field %q has both generate=true and itemvalue set; they are mutually exclusive on a password field", fieldName)
+			}
+		}
+
 		var itemValue string
 		switch {
+		case hasGenerate:
+			pw, err := client.GeneratePassword(templateField.FieldSlugName, template)
+			if err != nil {
+				return nil, fmt.Errorf("failed to generate password for field %q from template policy: %w", fieldName, err)
+			}
+			itemValue = pw
 		case hasPasswordValue:
 			itemValue = field.PasswordValue.ValueString()
 		case hasItemValue:

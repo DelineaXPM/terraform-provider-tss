@@ -26,6 +26,9 @@ For the release history prior to v4.0.0, see the [GitHub Releases](https://githu
 - New "Password handling" section in `README.md` and attribute documentation in `docs/resources/resource_secret.md` covering setting/rotating passwords and the state-safety guarantee.
 - `TestAccTSSSecret_PasswordNotInState`, `TestAccTSSSecret_RotateViaVersion`, `TestAccTSSSecret_ChangePwWithoutBumpIsNoop`, `TestAccTSSSecret_RefreshNoDrift` acceptance tests in `delinea/resource_secret_acceptance_test.go`.
 - `TestAccTSSSecret_SshKeyGeneration` and `TestAccTSSSecret_SshKeyAndPasswordMixed` acceptance tests, env-gated on `TSS_TEST_SSH_TEMPLATE_ID` and `TSS_TEST_MIXED_TEMPLATE_ID`. Verify `sshKeyFieldPlanModifier`'s server-side computation path and confirm non-interference with the password-handling changes for templates that contain both Password and SSH-key fields.
+- New `generate` Bool attribute on the `fields` block of `tss_resource_secret` — closes [gh #110](https://github.com/DelineaXPM/terraform-provider-tss/issues/110). When set to `true` on a password field, the provider asks Secret Server for a password matching the template's password-requirement policy (via `POST /api/v1/secret-templates/generate-password/{fieldId}`) and uses it as the field's value. The generated password reaches Secret Server through the normal create/update flow and is never written to Terraform state. Mutually exclusive with `password_value` and `itemvalue`. Rotates via `password_wo_version` bumps the same way `password_value` does.
+- New "Server-side password generation" section in `README.md` and `generate` attribute documentation in `docs/resources/resource_secret.md`.
+- `TestAccTSSSecret_GeneratePasswordFromTemplatePolicy`, `TestAccTSSSecret_GeneratePasswordRotation`, and `TestAccTSSSecret_GenerateNoBumpIsNoOp` acceptance tests covering create-with-generate, rotate-with-version-bump, and idempotent-no-rotate.
 
 ### Changed
 

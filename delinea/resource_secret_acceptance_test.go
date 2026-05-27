@@ -122,6 +122,7 @@ type fieldSpec struct {
 	ItemValue         string // if non-empty, emit itemvalue
 	PasswordValue     string // if non-empty, emit password_value (write-only)
 	PasswordWoVersion int    // if non-zero, emit password_wo_version
+	Generate          bool   // if true, emit generate=true
 }
 
 func testAccSecretConfig(name string, fields ...fieldSpec) string {
@@ -136,6 +137,9 @@ func testAccSecretConfig(name string, fields ...fieldSpec) string {
 		}
 		if f.PasswordWoVersion != 0 {
 			fieldBlocks += fmt.Sprintf("    password_wo_version = %d\n", f.PasswordWoVersion)
+		}
+		if f.Generate {
+			fieldBlocks += "    generate = true\n"
 		}
 		fieldBlocks += "  }"
 	}
@@ -331,6 +335,86 @@ func TestAccTSSSecret_PasswordValueChangeWithoutVersionBumpIsNoOp(t *testing.T) 
 			{Config: step1},
 			{
 				Config:             step2,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+// gh #110: Create with generate=true asks TSS for a password matching the
+// template's password-requirement policy and uses it as the field's
+// itemvalue. State has no plaintext password (same WriteOnly null behavior
+// as PasswordValue). The generated password should never appear in state.
+func TestAccTSSSecret_GeneratePasswordFromTemplatePolicy(t *testing.T) {
+	name := acctest.RandomWithPrefix("tf-acc-generate")
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccSecretConfig(name,
+					fieldSpec{Name: "Username", ItemValue: "testuser"},
+					fieldSpec{Name: "Password", Generate: true, PasswordWoVersion: 1},
+				),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("tss_resource_secret.test", "fields.1.itemvalue", ""),
+					resource.TestCheckResourceAttr("tss_resource_secret.test", "fields.1.generate", "true"),
+					resource.TestCheckResourceAttr("tss_resource_secret.test", "fields.1.password_wo_version", "1"),
+				),
+			},
+		},
+	})
+}
+
+// gh #110: Bumping password_wo_version while generate=true triggers an
+// Update; the provider re-calls the generate endpoint and TSS stores the
+// new generated password. State retains generate=true and the new version.
+func TestAccTSSSecret_GeneratePasswordRotation(t *testing.T) {
+	name := acctest.RandomWithPrefix("tf-acc-gen-rotate")
+	step1 := testAccSecretConfig(name,
+		fieldSpec{Name: "Username", ItemValue: "testuser"},
+		fieldSpec{Name: "Password", Generate: true, PasswordWoVersion: 1},
+	)
+	step2 := testAccSecretConfig(name,
+		fieldSpec{Name: "Username", ItemValue: "testuser"},
+		fieldSpec{Name: "Password", Generate: true, PasswordWoVersion: 2},
+	)
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: step1,
+				Check:  resource.TestCheckResourceAttr("tss_resource_secret.test", "fields.1.password_wo_version", "1"),
+			},
+			{
+				Config: step2,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("tss_resource_secret.test", "fields.1.password_wo_version", "2"),
+					resource.TestCheckResourceAttr("tss_resource_secret.test", "fields.1.itemvalue", ""),
+				),
+			},
+		},
+	})
+}
+
+// gh #110: re-applying a generate=true config without bumping
+// password_wo_version must be a no-op (no API call to generate-password,
+// no diff). Same property as the password_value case.
+func TestAccTSSSecret_GenerateNoBumpIsNoOp(t *testing.T) {
+	name := acctest.RandomWithPrefix("tf-acc-gen-noop")
+	config := testAccSecretConfig(name,
+		fieldSpec{Name: "Username", ItemValue: "testuser"},
+		fieldSpec{Name: "Password", Generate: true, PasswordWoVersion: 1},
+	)
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{Config: config},
+			{
+				Config:             config,
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
 			},
