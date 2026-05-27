@@ -371,6 +371,7 @@ func (r *TSSSecretResource) Delete(ctx context.Context, req resource.DeleteReque
 // Schema defines the schema for the resource
 func (r *TSSSecretResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Version: 1,
 		Attributes: map[string]schema.Attribute{
 			"name": schema.StringAttribute{
 				Required:    true,

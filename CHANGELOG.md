@@ -33,6 +33,8 @@ For the release history prior to v4.0.0, see the [GitHub Releases](https://githu
 - `Description` strings on the `itemid`, `fieldid`, `fileattachmentid`, `slug`, and `fielddescription` schema attributes so `terraform providers schema -json` and `tfplugindocs` output explain each one.
 - "Computed fields on `tss_resource_secret.fields`" section in `README.md` and matching content (Read-Only attribute list + "Computed Fields" subsection) in `docs/resources/resource_secret.md`. Addresses the customer-reported documentation gap on "auto-incrementing key fields" (closes PBI 718755).
 - `TestSchema_ServerAssignedFieldsAreComputedOnly` and `TestSchema_FileAttachmentIDIsOptionalAndComputed` schema-contract unit tests guarding the new `Computed`-only declarations.
+- State upgrader for v3.x → v4 schema (closes [gh #106](https://github.com/DelineaXPM/terraform-provider-tss/issues/106) for v3 source state). `tss_resource_secret`'s schema is now versioned (`Version: 1`) and the resource implements `ResourceWithUpgradeState`. v3.x state files (which had no version recorded by the framework) are upgraded by reading the prior state with a v3-shaped schema, copying every attribute across, and leaving the new v4 attributes (`password_value`, `password_wo_version`, `generate`) at their null defaults. v2.x state is **not** auto-upgradeable — its SDKv2 shape is incompatible with the modern framework. v2.x users should follow the migration paths documented in the new "Upgrading state from earlier provider versions" section of `README.md` (stay on v2.x, drop and recreate state, or manual state surgery).
+- `TestUpgradeFieldsV0ToV1_*` and `TestPriorSchemaV0_*` unit tests covering the upgrader's field-copy contract and the v3-shaped prior schema.
 
 ### Changed
 
