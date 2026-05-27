@@ -9,6 +9,7 @@ For the release history prior to v4.0.0, see the [GitHub Releases](https://githu
 ### Breaking
 
 - Documented Terraform floor raised from 0.13 to **1.11**. `tss_resource_secret`'s new write-only password attribute requires Terraform 1.11. `README.md`, `docs/index.md`, and `examples/secrets/*.tf` (7 example configurations) updated accordingly. Users on Terraform &lt; 1.11 will see an `Unsupported Terraform Core version` error at `terraform init` once on v4.0.0.
+- `itemid`, `fieldid`, `slug`, and `fielddescription` on `tss_resource_secret.fields` are now `Computed`-only (closes PBI 718755). Configurations that set any of these four attributes in `fields` blocks will fail at plan time with `Can't configure a value for X: its value will be decided automatically based on the result of applying this configuration`. These values are server-assigned by Secret Server; the previous `Optional+Computed` declaration silently accepted user input and then overwrote it. **Migration:** delete those attributes from your `fields` blocks. `fileattachmentid` remains `Optional+Computed` because it is genuinely user-settable for file-type fields.
 
 ### Security
 
@@ -29,6 +30,9 @@ For the release history prior to v4.0.0, see the [GitHub Releases](https://githu
 - New `generate` Bool attribute on the `fields` block of `tss_resource_secret` — closes [gh #110](https://github.com/DelineaXPM/terraform-provider-tss/issues/110). When set to `true` on a password field, the provider asks Secret Server for a password matching the template's password-requirement policy (via `POST /api/v1/secret-templates/generate-password/{fieldId}`) and uses it as the field's value. The generated password reaches Secret Server through the normal create/update flow and is never written to Terraform state. Mutually exclusive with `password_value` and `itemvalue`. Rotates via `password_wo_version` bumps the same way `password_value` does.
 - New "Server-side password generation" section in `README.md` and `generate` attribute documentation in `docs/resources/resource_secret.md`.
 - `TestAccTSSSecret_GeneratePasswordFromTemplatePolicy`, `TestAccTSSSecret_GeneratePasswordRotation`, and `TestAccTSSSecret_GenerateNoBumpIsNoOp` acceptance tests covering create-with-generate, rotate-with-version-bump, and idempotent-no-rotate.
+- `Description` strings on the `itemid`, `fieldid`, `fileattachmentid`, `slug`, and `fielddescription` schema attributes so `terraform providers schema -json` and `tfplugindocs` output explain each one.
+- "Computed fields on `tss_resource_secret.fields`" section in `README.md` and matching content (Read-Only attribute list + "Computed Fields" subsection) in `docs/resources/resource_secret.md`. Addresses the customer-reported documentation gap on "auto-incrementing key fields" (closes PBI 718755).
+- `TestSchema_ServerAssignedFieldsAreComputedOnly` and `TestSchema_FileAttachmentIDIsOptionalAndComputed` schema-contract unit tests guarding the new `Computed`-only declarations.
 
 ### Changed
 

@@ -1,11 +1,14 @@
 package delinea
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"testing"
 
 	"github.com/DelineaXPM/tss-sdk-go/v2/server"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -424,4 +427,54 @@ func Example_alignFieldsToReference_refresh() {
 	// Output:
 	// Username
 	// Password
+}
+
+func fieldsBlockAttributes(t *testing.T) map[string]schema.Attribute {
+	t.Helper()
+	r := &TSSSecretResource{}
+	resp := &resource.SchemaResponse{}
+	r.Schema(context.Background(), resource.SchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("Schema() returned diagnostics: %v", resp.Diagnostics)
+	}
+	block, ok := resp.Schema.Blocks["fields"].(schema.ListNestedBlock)
+	if !ok {
+		t.Fatalf("fields block missing or wrong type: %T", resp.Schema.Blocks["fields"])
+	}
+	return block.NestedObject.Attributes
+}
+
+// PBI 718755: these four attributes are server-assigned. Declaring them
+// Computed-only (no Optional) is what makes Terraform reject configs that try
+// to set them, which is the diagnostic the customer needed.
+func TestSchema_ServerAssignedFieldsAreComputedOnly(t *testing.T) {
+	attrs := fieldsBlockAttributes(t)
+	for _, name := range []string{"itemid", "fieldid", "slug", "fielddescription"} {
+		attr, ok := attrs[name]
+		if !ok {
+			t.Fatalf("%s: attribute missing from fields block", name)
+		}
+		if !attr.IsComputed() {
+			t.Errorf("%s: IsComputed() = false, want true", name)
+		}
+		if attr.IsOptional() {
+			t.Errorf("%s: IsOptional() = true, want false (setting in config must produce a plan-time error)", name)
+		}
+	}
+}
+
+// fileattachmentid is the documented exception: it is genuinely user-settable
+// on file-type fields, so it must stay Optional+Computed.
+func TestSchema_FileAttachmentIDIsOptionalAndComputed(t *testing.T) {
+	attrs := fieldsBlockAttributes(t)
+	attr, ok := attrs["fileattachmentid"]
+	if !ok {
+		t.Fatal("fileattachmentid: attribute missing from fields block")
+	}
+	if !attr.IsOptional() {
+		t.Error("fileattachmentid: IsOptional() = false, want true")
+	}
+	if !attr.IsComputed() {
+		t.Error("fileattachmentid: IsComputed() = false, want true")
+	}
 }
