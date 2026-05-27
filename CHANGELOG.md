@@ -15,9 +15,12 @@ For the release history prior to v4.0.0, see the [GitHub Releases](https://githu
 ### Added
 
 - New `.github/workflows/ci.yml` — runs `go build`, `go vet`, and `go test ./...` on every pull request and push to `main` or `dev/v4.0.0`.
+- Acceptance test scaffolding (`delinea/resource_secret_acceptance_test.go`) using `ProtoV6ProviderFactories`, `testAccPreCheck`, and `testAccSecretConfig`. Three `TestAcc*` functions exercise `tss_resource_secret` against a live tenant (partial-fields, all-fields, refresh-no-drift). Gated on `TF_ACC=1`. New dep: `github.com/hashicorp/terraform-plugin-testing v1.15.0` (which transitively bumps `terraform-plugin-framework` to v1.19.0 and `terraform-plugin-go` to v0.31.0).
+- `delinea/otel_init_test.go` — disables OpenTelemetry trace export (`OTEL_TRACES_EXPORTER=none`, `OTEL_SDK_DISABLED=true`) unconditionally in `init()`. Terraform 1.12+ tries to export OTLP traces to `localhost:4317`, costing ~10s per terraform subprocess; under terraform-plugin-testing that compounds into minutes.
 
 ### Fixed
 
 - `delinea/provider.go`: corrected two malformed `log.Printf` format strings (the trailing `map[string]interface{}{...}` argument was being silently dropped) and removed an unreachable `serverConfig == nil` guard. Hygiene only — closes pre-existing `go vet` failures so the new CI workflow passes from day one.
+- `flattenSecret` block-count mismatch on partial-fields configs (`delinea/resource_secret.go`). Threaded a reference-fields list through `readSecretByID`; callers pass `plan.Fields` (Create/Update) or `state.Fields` (Read); case-insensitive match; nil reference disables filtering. Resolves "Provider produced inconsistent result after apply" (block count N → M) on configs that specify only a subset of the template's fields. Adds unit tests and three `Example_*` functions documenting the scenarios.
 
 [Unreleased]: https://github.com/DelineaXPM/terraform-provider-tss/compare/v3.1.1...HEAD
