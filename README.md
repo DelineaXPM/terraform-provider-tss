@@ -264,46 +264,89 @@ This will delete all secrets listed in the set. Each deletion is tracked separat
 
 ## Environment variables
 
-You can provide your credentials via the tss_server_url, tss_username and tss_password environment variables.
-In this case, tss provider could be represented like this 
+### Provider env-var fallback
+
+The provider resolves each setting in the order *explicit provider attribute > environment variable > unset*. With the env vars exported, the provider block can be left empty:
+
+| Env var          | Provider attribute |
+|------------------|--------------------|
+| `TSS_SERVER_URL` | `server_url`       |
+| `TSS_USERNAME`   | `username`         |
+| `TSS_PASSWORD`   | `password`         |
+| `TSS_TOKEN`      | `token`            |
+| `TSS_DOMAIN`     | `domain`           |
+
+```hcl
+provider "tss" {}
 ```
+
+Username/password example (Linux/macOS):
+
+```sh
+export TSS_SERVER_URL="https://localhost/SecretServer"
+export TSS_USERNAME="my_app_user"
+export TSS_PASSWORD="Passw0rd."
+terraform plan
+```
+
+OAuth token instead of username/password:
+
+```sh
+export TSS_SERVER_URL="https://localhost/SecretServer"
+export TSS_TOKEN="PASTE_TOKEN_HERE"
+terraform plan
+```
+
+Windows (`cmd.exe`) uses `set` instead of `export`; PowerShell uses `$Env:TSS_SERVER_URL = "..."`.
+
+After the env-var fallback runs, the provider enforces:
+
+- `server_url` must be set.
+- Exactly one of `(username + password)` or `token` must be set.
+
+Configurations that violate these rules produce a plan-time error naming the missing or conflicting attribute.
+
+### Using Terraform input variables
+
+As an alternative, expose credentials via Terraform input variables. Each `variable "x"` block is populated from the corresponding `TF_VAR_x` environment variable:
+
+```hcl
 provider "tss" {
   username   = var.tss_username
   password   = var.tss_password
   server_url = var.tss_server_url
 }
 ```
-Usage (For Linux)
-```
-$ export TF_VAR_tss_username="my_app_user"
-$ export TF_VAR_tss_password="Passw0rd."
-$ export TF_VAR_tss_server_url="https://localhost/SecretServer"
-$ terraform plan or $ terraform apply
-```
-Usage (For Windows)
-```
-> set TF_VAR_tss_username="my_app_user"
-> set TF_VAR_tss_password="Passw0rd."
-> set TF_VAR_tss_server_url="https://localhost/SecretServer"
-> terraform plan or > terraform apply
+
+Linux/macOS:
+
+```sh
+export TF_VAR_tss_username="my_app_user"
+export TF_VAR_tss_password="Passw0rd."
+export TF_VAR_tss_server_url="https://localhost/SecretServer"
+terraform plan
 ```
 
-Alternatively, an OAuth API token can be provided instead of a username and password:
+Windows (`cmd.exe`):
 
+```bat
+set TF_VAR_tss_username=my_app_user
+set TF_VAR_tss_password=Passw0rd.
+set TF_VAR_tss_server_url=https://localhost/SecretServer
+terraform plan
 ```
-$ export TSS_TOKEN="PASTE_TOKEN_HERE"
-$ export TSS_SERVER_URL="https://localhost/SecretServer"
-$ terraform plan
-```
 
-### Required
+This is Terraform's general variable mechanism and is independent of the provider's `TSS_*` fallback above — pick whichever fits your environment.
 
-- `server_url` (String) The Secret Server base URL e.g. https://localhost/SecretServer
-- Username/password authentication:
-  - `username` (String) The username of the Secret Server User to connect as
-  - `password` (String) The password of the Secret Server User
-- Token authentication
-  - `token` (String) An OAuth token to authenticate with the Secret Server
+### Provider attributes
+
+All provider attributes are `Optional` at the schema level; the auth rules above are enforced at plan time after the env-var fallback resolves.
+
+- `server_url` (String) — Secret Server base URL, e.g. `https://localhost/SecretServer`. Falls back to `TSS_SERVER_URL`.
+- `username` (String) — Secret Server username. Falls back to `TSS_USERNAME`.
+- `password` (String, Sensitive) — Secret Server password. Falls back to `TSS_PASSWORD`.
+- `token` (String, Sensitive) — OAuth token (alternative to username/password). Falls back to `TSS_TOKEN`.
+- `domain` (String) — Domain for AD-backed accounts. Falls back to `TSS_DOMAIN`.
 
 ## Domain user accounts
 
