@@ -42,7 +42,7 @@ The `field` argument matches a Secret Server field by its **slug** (the URL-styl
 
 ### Read-Only
 
-- `secrets` (Attributes List, Sensitive) The list of `{id, value}` results, in the same order as `ids`. The `value` attribute is marked sensitive — Terraform CLI output masks it and `terraform show -json` emits the value but it is treated as sensitive. (See [Nested Schema for `secrets`](#nestedatt--secrets).)
+- `secrets` (Attributes List) The list of `{id, value}` results, in the same order as `ids`. The `value` attribute is marked sensitive — Terraform CLI output masks it and `terraform show -json` emits the value but it is treated as sensitive. (See [Nested Schema for `secrets`](#nestedatt--secrets).)
 
 <a id="nestedatt--secrets"></a>
 ### Nested Schema for `secrets`

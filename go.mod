@@ -1,4 +1,4 @@
-module github.com/DelineaXPM/terraform-provider-tss/v3
+module github.com/DelineaXPM/terraform-provider-tss/v4
 
 go 1.26.2
 
