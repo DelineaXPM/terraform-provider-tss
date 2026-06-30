@@ -10,11 +10,11 @@ The latest release can be [downloaded from the terraform registry](https://regis
 
 If wish to install straight from source, follow the steps below.
 
-## Install form Source
+## Install from Source
 
-### Terraform 0.13 and later
+### Terraform 1.11 and later
 
-Terraform 0.13 uses a different file system layout for 3rd party providers. More information on this can be found [here](https://www.terraform.io/upgrade-guides/0-13.html#new-filesystem-layout-for-local-copies-of-providers). The following folder path will need to be created in the plugins directory of the user's profile.
+This provider requires **Terraform 1.11 or later**. The write-only attribute support used by `password_value` on `tss_resource_secret` is a Terraform 1.11 core feature; earlier versions will reject the schema. To install a local build, place the provider binary under the standard plugins directory for your OS:
 
 #### Windows
 
@@ -23,7 +23,7 @@ Terraform 0.13 uses a different file system layout for 3rd party providers. More
 └───terraform.delinea.com
     DelineaXPM
         └───tss
-            └───3.0.0
+            └───4.0.0
                 └───windows_amd64
 ```
 
@@ -34,20 +34,21 @@ Terraform 0.13 uses a different file system layout for 3rd party providers. More
 └───terraform.delinea.com
     DelineaXPM
         └───tss
-            └───3.0.0
+            └───4.0.0
                 ├───linux_amd64
 ```
 
 ## Usage
 
-For Terraform 0.13+, include the `terraform` block in your configuration, or plan, that specifies the provider:
+Include the `terraform` block in your configuration, or plan, that specifies the Terraform version and provider:
 
 ```terraform
 terraform {
+  required_version = ">= 1.11.0"
   required_providers {
     tss = {
-      source = "DelineaXPM/tss"
-      version = "~> 2.0"
+      source  = "DelineaXPM/tss"
+      version = ">= 4.0.0"
     }
   }
 }
@@ -114,6 +115,122 @@ Delete Secret:
 
 This functionality deactivates the secret in Delinea Secret Server.
 
+## Password handling (`tss_resource_secret`)
+
+Password fields on `tss_resource_secret` use Terraform's write-only attribute mechanism to keep the value out of Terraform state. Use the `password_value` attribute for any field where the template has `IsPassword` set (e.g. the `Password` field on the built-in Password template).
+
+### Setting a password on a new secret
+
+```hcl
+resource "tss_resource_secret" "example" {
+  name             = "example"
+  folderid         = "5"
+  siteid           = "1"
+  secrettemplateid = "2"
+
+  fields {
+    fieldname = "Username"
+    itemvalue = "myuser"
+  }
+  fields {
+    fieldname           = "Password"
+    password_value      = var.db_password
+    password_wo_version = 1
+  }
+}
+```
+
+`password_value` is write-only: it is sent to Secret Server on create/update but never written to `terraform.tfstate` or emitted by `terraform show -json`. Because Terraform cannot compare a value that isn't in state, the provider uses `password_wo_version` as an explicit rotation trigger.
+
+### Rotating a password
+
+Change both attributes together and apply:
+
+```hcl
+fields {
+  fieldname           = "Password"
+  password_value      = var.db_password_new     # new value
+  password_wo_version = 2                        # bumped from 1
+}
+```
+
+On plan, Terraform sees the `password_wo_version` change and schedules an update; on apply, the provider reads `password_value` from config and sends it to Secret Server. Any new integer works — only the change is significant.
+
+### Server-side password generation
+
+If you don't want to supply a password value yourself, set `generate = true` on the field. The provider asks Secret Server for a password matching the template's password-requirement policy and uses that value:
+
+```hcl
+resource "tss_resource_secret" "db" {
+  name             = "db-prod"
+  folderid         = "42"
+  siteid           = "1"
+  secrettemplateid = "2"
+
+  fields {
+    fieldname = "Username"
+    itemvalue = "dbadmin"
+  }
+  fields {
+    fieldname           = "Password"
+    generate            = true
+    password_wo_version = 1
+  }
+}
+```
+
+`generate` is mutually exclusive with `password_value` and (for password fields) `itemvalue` — the provider rejects configs that set both. Rotation works the same way as for `password_value`: bump `password_wo_version` to ask for a new generated password on the next apply. Re-applying with the same `password_wo_version` is a no-op (no API call to the generate endpoint, no rotation).
+
+The generated password reaches Secret Server through the normal create/update flow. It never lands in `terraform.tfstate` because `flattenSecret` nulls `itemvalue` for fields the template marks `IsPassword`.
+
+### Guarantees and caveats
+
+- `terraform.tfstate` contains no plaintext password. Post-apply, `itemvalue` is `null` for any field the template marks `IsPassword`.
+- `terraform show -json` does not emit the password value.
+- CLI plan/apply output masks the value because `password_value` and `itemvalue` are both marked `Sensitive`.
+- The password value still lives in your Terraform config. Use env vars, a TF Cloud sensitive variable, or a secret-backend data source for the actual input.
+- Legacy configs that set `itemvalue` on a password field still work, but `flattenSecret` now nulls the value in state, which produces a perpetual plan diff. Migrate those fields to `password_value` + `password_wo_version`.
+- Upgrading from v3.1.x or earlier: existing state files still contain plaintext passwords. The first `terraform apply` or `terraform refresh` after the upgrade will null them; no data loss, just state cleanup.
+
+## Computed fields on `tss_resource_secret.fields`
+
+Each `fields` block has attributes that Secret Server assigns automatically after `terraform apply`. They appear in Terraform state but are not user-settable:
+
+- `itemid` — database ID of this field-value record. Auto-assigned by Secret Server; sequential per newly-created secret.
+- `fieldid` — the template field ID. Stable per template, shared across every secret that uses the template. Not sequential.
+- `slug` — the field's URL slug, assigned by the template.
+- `fielddescription` — the field description, set by the template.
+
+Setting any of these four in your config produces a plan error ("Can't configure a value for `itemid`: its value will be decided automatically based on the result of applying this configuration"). That's the signal that these are server-assigned — leave them out.
+
+One exception: `fileattachmentid` is both `Computed` and `Optional`. It's genuinely user-settable for file-type fields (you can point an existing attachment at this field), and populated automatically for non-file fields.
+
+## Upgrading state from earlier provider versions
+
+### From v3.x to v4.0.0
+
+`terraform-provider-tss` v4.0.0 versions the schema (`Version: 1`) and ships a state upgrader that runs automatically the first time `terraform plan` is invoked against existing v3.x state. No user action is required. The upgrader carries every existing field across and leaves the new v4 attributes (`password_value`, `password_wo_version`, `generate`) at their null defaults.
+
+If you used `itemvalue` to supply a password on a `tss_resource_secret` field, the post-upgrade plan will show the value being null'd in state (because v4 nulls `itemvalue` for `IsPassword` fields). The first apply pushes that null to nothing — your password in TSS is unchanged. Migrate the password to `password_value` + `password_wo_version` at your convenience to avoid the perpetual diff that the legacy `itemvalue` path produces.
+
+### From v2.x to v4.0.0
+
+**v2.x and v4.0.0 are not directly compatible at the state level.** v2.x used Terraform's older Plugin SDKv2; v3+ switched to the modern Plugin Framework, which uses a different on-disk state shape. v4.0.0 does not include a v2 → v4 upgrader — translating SDKv2 state to framework state is substantial separate work that we have deferred.
+
+If you are still on v2.x, choose one of the following paths:
+
+1. **Stay on v2.x.** Reasonable for stable production where the resource isn't actively churning and the security/feature additions in v3+ aren't required. v2.x continues to function indefinitely against TSS.
+
+2. **Drop and recreate state** (recommended for most v2 → v4 migrations):
+   - For each affected resource: `terraform state rm tss_resource_secret.X`
+   - Adjust your config so the recreated resource doesn't collide on `name` with the existing secret in TSS, **or** delete the corresponding secret from TSS first.
+   - `terraform apply` recreates the resource fresh, recorded under v4 state.
+   - **Caveat:** any secret you delete from TSS to avoid a name collision is permanently gone; back up first.
+
+3. **Manual state surgery.** Edit `terraform.tfstate` to convert SDKv2 shape to framework shape and bump `schema_version` to `1`. Risky, unsupported, requires understanding both shapes — only suitable for experienced operators with reliable backups.
+
+There is no automatic path from v2.x state to v4 today. If your scenario isn't served by 1–3 above, please file a GitHub issue.
+
 ## Delete Secret by ID
 
 The `tss_secret_deletion` resource allows you to delete secrets by their ID, even if they are not managed by Terraform state.
@@ -147,46 +264,89 @@ This will delete all secrets listed in the set. Each deletion is tracked separat
 
 ## Environment variables
 
-You can provide your credentials via the tss_server_url, tss_username and tss_password environment variables.
-In this case, tss provider could be represented like this 
+### Provider env-var fallback
+
+The provider resolves each setting in the order *explicit provider attribute > environment variable > unset*. With the env vars exported, the provider block can be left empty:
+
+| Env var          | Provider attribute |
+|------------------|--------------------|
+| `TSS_SERVER_URL` | `server_url`       |
+| `TSS_USERNAME`   | `username`         |
+| `TSS_PASSWORD`   | `password`         |
+| `TSS_TOKEN`      | `token`            |
+| `TSS_DOMAIN`     | `domain`           |
+
+```hcl
+provider "tss" {}
 ```
+
+Username/password example (Linux/macOS):
+
+```sh
+export TSS_SERVER_URL="https://localhost/SecretServer"
+export TSS_USERNAME="my_app_user"
+export TSS_PASSWORD="Passw0rd."
+terraform plan
+```
+
+OAuth token instead of username/password:
+
+```sh
+export TSS_SERVER_URL="https://localhost/SecretServer"
+export TSS_TOKEN="PASTE_TOKEN_HERE"
+terraform plan
+```
+
+Windows (`cmd.exe`) uses `set` instead of `export`; PowerShell uses `$Env:TSS_SERVER_URL = "..."`.
+
+After the env-var fallback runs, the provider enforces:
+
+- `server_url` must be set.
+- Exactly one of `(username + password)` or `token` must be set.
+
+Configurations that violate these rules produce a plan-time error naming the missing or conflicting attribute.
+
+### Using Terraform input variables
+
+As an alternative, expose credentials via Terraform input variables. Each `variable "x"` block is populated from the corresponding `TF_VAR_x` environment variable:
+
+```hcl
 provider "tss" {
   username   = var.tss_username
   password   = var.tss_password
   server_url = var.tss_server_url
 }
 ```
-Usage (For Linux)
-```
-$ export TF_VAR_tss_username="my_app_user"
-$ export TF_VAR_tss_password="Passw0rd."
-$ export TF_VAR_tss_server_url="https://localhost/SecretServer"
-$ terraform plan or $ terraform apply
-```
-Usage (For Windows)
-```
-> set TF_VAR_tss_username="my_app_user"
-> set TF_VAR_tss_password="Passw0rd."
-> set TF_VAR_tss_server_url="https://localhost/SecretServer"
-> terraform plan or > terraform apply
+
+Linux/macOS:
+
+```sh
+export TF_VAR_tss_username="my_app_user"
+export TF_VAR_tss_password="Passw0rd."
+export TF_VAR_tss_server_url="https://localhost/SecretServer"
+terraform plan
 ```
 
-Alternatively, an OAuth API token can be provided instead of a username and password:
+Windows (`cmd.exe`):
 
+```bat
+set TF_VAR_tss_username=my_app_user
+set TF_VAR_tss_password=Passw0rd.
+set TF_VAR_tss_server_url=https://localhost/SecretServer
+terraform plan
 ```
-$ export TSS_TOKEN="PASTE_TOKEN_HERE"
-$ export TSS_SERVER_URL="https://localhost/SecretServer"
-$ terraform plan
-```
 
-### Required
+This is Terraform's general variable mechanism and is independent of the provider's `TSS_*` fallback above — pick whichever fits your environment.
 
-- `server_url` (String) The Secret Server base URL e.g. https://localhost/SecretServer
-- Username/password authentication:
-  - `username` (String) The username of the Secret Server User to connect as
-  - `password` (String) The password of the Secret Server User
-- Token authentication
-  - `token` (String) An OAuth token to authenticate with the Secret Server
+### Provider attributes
+
+All provider attributes are `Optional` at the schema level; the auth rules above are enforced at plan time after the env-var fallback resolves.
+
+- `server_url` (String) — Secret Server base URL, e.g. `https://localhost/SecretServer`. Falls back to `TSS_SERVER_URL`.
+- `username` (String) — Secret Server username. Falls back to `TSS_USERNAME`.
+- `password` (String, Sensitive) — Secret Server password. Falls back to `TSS_PASSWORD`.
+- `token` (String, Sensitive) — OAuth token (alternative to username/password). Falls back to `TSS_TOKEN`.
+- `domain` (String) — Domain for AD-backed accounts. Falls back to `TSS_DOMAIN`.
 
 ## Domain user accounts
 
@@ -233,7 +393,7 @@ Usage (For Windows)
 ## Ephemeral Resource
 
 This ephemeral resource fetches secret values from Delinea Secret Server at runtime without storing them in Terraform state. It is useful for handling sensitive secret data dynamically without persisting them. An ephemeral resource can be used as shown below.
-To support the Ephemeral Resource miniumum version of Terraform must be 1.10.5 and above.
+Ephemeral resources require Terraform 1.10.5 or later; this provider's overall floor is Terraform 1.11 (see above), which satisfies that requirement.
 
 Get Secret By ID:
 

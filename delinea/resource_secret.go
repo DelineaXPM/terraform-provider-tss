@@ -48,19 +48,22 @@ type SecretResourceState struct {
 }
 
 type SecretField struct {
-	FieldName        types.String `tfsdk:"fieldname"`
-	ItemValue        types.String `tfsdk:"itemvalue"`
-	ItemID           types.Int64  `tfsdk:"itemid"`
-	FieldID          types.Int64  `tfsdk:"fieldid"`
-	FileAttachmentID types.Int64  `tfsdk:"fileattachmentid"`
-	Slug             types.String `tfsdk:"slug"`
-	FieldDescription types.String `tfsdk:"fielddescription"`
-	Filename         types.String `tfsdk:"filename"`
-	IsFile           types.Bool   `tfsdk:"isfile"`
-	IsNotes          types.Bool   `tfsdk:"isnotes"`
-	IsPassword       types.Bool   `tfsdk:"ispassword"`
-	IsList           types.Bool   `tfsdk:"islist"`
-	ListType         types.String `tfsdk:"listtype"`
+	FieldName         types.String `tfsdk:"fieldname"`
+	ItemValue         types.String `tfsdk:"itemvalue"`
+	PasswordValue     types.String `tfsdk:"password_value"`
+	PasswordWoVersion types.Int64  `tfsdk:"password_wo_version"`
+	Generate          types.Bool   `tfsdk:"generate"`
+	ItemID            types.Int64  `tfsdk:"itemid"`
+	FieldID           types.Int64  `tfsdk:"fieldid"`
+	FileAttachmentID  types.Int64  `tfsdk:"fileattachmentid"`
+	Slug              types.String `tfsdk:"slug"`
+	FieldDescription  types.String `tfsdk:"fielddescription"`
+	Filename          types.String `tfsdk:"filename"`
+	IsFile            types.Bool   `tfsdk:"isfile"`
+	IsNotes           types.Bool   `tfsdk:"isnotes"`
+	IsPassword        types.Bool   `tfsdk:"ispassword"`
+	IsList            types.Bool   `tfsdk:"islist"`
+	ListType          types.String `tfsdk:"listtype"`
 }
 
 type SshKeyArgs struct {
@@ -93,14 +96,16 @@ func (r *TSSSecretResource) Configure(ctx context.Context, req resource.Configur
 
 // Create creates the resource
 func (r *TSSSecretResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var plan SecretResourceState
+	var plan, config SecretResourceState
 
-	// Read the configuration
 	diags := req.Plan.Get(ctx, &plan)
+	resp.Diagnostics.Append(diags...)
+	diags = req.Config.Get(ctx, &config)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	mergeWriteOnlyFieldValues(plan.Fields, config.Fields)
 
 	// Ensure the client configuration is set
 	if r.clientConfig == nil {
@@ -134,7 +139,7 @@ func (r *TSSSecretResource) Create(ctx context.Context, req resource.CreateReque
 	fmt.Printf("Secret is Created successfully...!")
 
 	// Refresh state - let Terraform accept the computed values from the server
-	newState, readDiags := r.readSecretByID(ctx, createdSecret.ID, client)
+	newState, readDiags := r.readSecretByID(ctx, createdSecret.ID, client, plan.Fields)
 	resp.Diagnostics.Append(readDiags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -167,17 +172,18 @@ func (r *TSSSecretResource) Create(ctx context.Context, req resource.CreateReque
 
 // Update updates the resource
 func (r *TSSSecretResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan SecretResourceState
-	var state SecretResourceState
+	var plan, state, config SecretResourceState
 
-	// Read the plan
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
 	diags = req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
+	diags = req.Config.Get(ctx, &config)
+	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	mergeWriteOnlyFieldValues(plan.Fields, config.Fields)
 
 	// Ensure the client configuration is set
 	if r.clientConfig == nil {
@@ -270,7 +276,7 @@ func (r *TSSSecretResource) Update(ctx context.Context, req resource.UpdateReque
 	fmt.Printf("Secret is Updated successfully...!")
 
 	//Refresh state
-	newState, readDiags := r.readSecretByID(ctx, updatedSecret.ID, client)
+	newState, readDiags := r.readSecretByID(ctx, updatedSecret.ID, client, plan.Fields)
 	resp.Diagnostics.Append(readDiags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -365,6 +371,7 @@ func (r *TSSSecretResource) Delete(ctx context.Context, req resource.DeleteReque
 // Schema defines the schema for the resource
 func (r *TSSSecretResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Version: 1,
 		Attributes: map[string]schema.Attribute{
 			"name": schema.StringAttribute{
 				Required:    true,
@@ -480,31 +487,47 @@ func (r *TSSSecretResource) Schema(ctx context.Context, req resource.SchemaReque
 						"itemvalue": schema.StringAttribute{
 							Optional:    true,
 							Computed:    true,
-							Description: "The value of the field. For SSH key generation, this will be computed by the server.",
+							Sensitive:   true,
+							Description: "The value of the field. For SSH key generation, this will be computed by the server. Prefer password_value for password fields so the value does not land in state.",
 							PlanModifiers: []planmodifier.String{
 								sshKeyFieldPlanModifier{},
 								stringplanmodifier.UseStateForUnknown(),
 							},
 						},
+						"password_value": schema.StringAttribute{
+							Optional:    true,
+							WriteOnly:   true,
+							Sensitive:   true,
+							Description: "Write-only password value for password fields. Never persisted in Terraform state (framework-enforced). Pair with password_wo_version to trigger rotation.",
+						},
+						"password_wo_version": schema.Int64Attribute{
+							Optional:    true,
+							Description: "Rotation trigger for password_value or generate. Bump this integer to signal Terraform that the password_value has changed and should be re-sent to TSS, or that a new password should be generated when generate=true; any new value is fine, only the change matters.",
+						},
+						"generate": schema.BoolAttribute{
+							Optional:    true,
+							Description: "Request server-side password generation from the template's password-requirement policy (closes gh #110). Only honored on fields the template marks as password fields. Mutually exclusive with password_value and itemvalue. Pair with password_wo_version to rotate the generated password.",
+						},
 						"itemid": schema.Int64Attribute{
-							Optional: true,
-							Computed: true,
+							Computed:    true,
+							Description: "Server-assigned database ID of this field-value record. Populated after apply; do not set in config.",
 						},
 						"fieldid": schema.Int64Attribute{
-							Optional: true,
-							Computed: true,
+							Computed:    true,
+							Description: "Secret Server template field ID; stable per template, shared across every secret that uses the template. Populated after apply; do not set in config.",
 						},
 						"fileattachmentid": schema.Int64Attribute{
-							Optional: true,
-							Computed: true,
+							Optional:    true,
+							Computed:    true,
+							Description: "File attachment ID. Only meaningful for file-type fields; genuinely user-settable there as an alternative to uploading a new file.",
 						},
 						"slug": schema.StringAttribute{
-							Optional: true,
-							Computed: true,
+							Computed:    true,
+							Description: "Field's URL slug, assigned by the template. Populated after apply; do not set in config.",
 						},
 						"fielddescription": schema.StringAttribute{
-							Optional: true,
-							Computed: true,
+							Computed:    true,
+							Description: "Field description from the template. Populated after apply; do not set in config.",
 						},
 						"filename": schema.StringAttribute{
 							Optional: true,
@@ -578,7 +601,7 @@ func (r *TSSSecretResource) Read(ctx context.Context, req resource.ReadRequest, 
 	}
 
 	// Retrieve the secret
-	newState, readDiags := r.readSecretByID(ctx, int(state.ID.ValueInt64()), client)
+	newState, readDiags := r.readSecretByID(ctx, int(state.ID.ValueInt64()), client, state.Fields)
 	resp.Diagnostics.Append(readDiags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -627,7 +650,7 @@ func (r *TSSSecretResource) Read(ctx context.Context, req resource.ReadRequest, 
 	resp.Diagnostics.Append(diags...)
 }
 
-func (r *TSSSecretResource) readSecretByID(ctx context.Context, id int, client *server.Server) (*SecretResourceState, diag.Diagnostics) {
+func (r *TSSSecretResource) readSecretByID(ctx context.Context, id int, client *server.Server, reference []SecretField) (*SecretResourceState, diag.Diagnostics) {
 	// Create the server client
 	client, err := server.New(*r.clientConfig)
 	if err != nil {
@@ -651,7 +674,57 @@ func (r *TSSSecretResource) readSecretByID(ctx context.Context, id int, client *
 		}
 	}
 
+	state.Fields = alignFieldsToReference(state.Fields, reference)
+
 	return state, nil
+}
+
+// mergeWriteOnlyFieldValues copies write-only attribute values (password_value)
+// from the config-derived slice into the plan-derived slice, matching by
+// fieldname. WriteOnly attributes are absent from Plan and State by framework
+// design and are only available via req.Config; Create/Update merge them back
+// in before building the TSS API request.
+func mergeWriteOnlyFieldValues(plan, config []SecretField) {
+	for i, p := range plan {
+		for _, c := range config {
+			if strings.EqualFold(p.FieldName.ValueString(), c.FieldName.ValueString()) {
+				if !c.PasswordValue.IsNull() {
+					plan[i].PasswordValue = c.PasswordValue
+				}
+				break
+			}
+		}
+	}
+}
+
+// alignFieldsToReference returns fields whose names appear in reference, in reference
+// order. Used so post-apply state mirrors the fields the user specified in config;
+// without this, TSS templates that define more fields than the user listed would
+// trigger Terraform's "Provider produced inconsistent result after apply" error.
+// A nil reference disables filtering (returns fields unchanged).
+//
+// For each matched field, user-set attributes that the TSS API does not round-trip
+// are copied from the reference into the aligned result: password_wo_version is
+// the rotation trigger for the write-only password_value attribute, and generate
+// is the request-server-side-generation flag — both live only on the Terraform
+// side and must be preserved from plan (on Create/Update) or prior state (on Read).
+func alignFieldsToReference(fields []SecretField, reference []SecretField) []SecretField {
+	if reference == nil {
+		return fields
+	}
+	byName := make(map[string]SecretField, len(fields))
+	for _, f := range fields {
+		byName[strings.ToLower(f.FieldName.ValueString())] = f
+	}
+	aligned := make([]SecretField, 0, len(reference))
+	for _, r := range reference {
+		if f, ok := byName[strings.ToLower(r.FieldName.ValueString())]; ok {
+			f.PasswordWoVersion = r.PasswordWoVersion
+			f.Generate = r.Generate
+			aligned = append(aligned, f)
+		}
+	}
+	return aligned
 }
 
 func (r *TSSSecretResource) getSecretData(ctx context.Context, state *SecretResourceState, client *server.Server) (*server.Secret, error) {
@@ -689,43 +762,52 @@ func (r *TSSSecretResource) getSecretData(ctx context.Context, state *SecretReso
 			}
 		}
 
-		// Handle field values appropriately - all optional fields should accept null or empty values
-		var itemValue string
+		hasGenerate := !field.Generate.IsNull() && field.Generate.ValueBool()
+		hasPasswordValue := !field.PasswordValue.IsNull() && field.PasswordValue.ValueString() != ""
+		hasItemValue := !field.ItemValue.IsNull() && field.ItemValue.ValueString() != ""
 
-		// All fields can accept null or empty values (they're all optional in Terraform schema)
-		if field.ItemValue.IsNull() {
-			// For null values, use empty string
-			itemValue = ""
-			fmt.Printf("[DEBUG] Field with null value detected: %s, using empty string\n", fieldName)
-		} else {
-			// Otherwise use the actual value
-			itemValue = field.ItemValue.ValueString()
-
-			// Log empty strings but keep them as valid values
-			if itemValue == "" {
-				fmt.Printf("[DEBUG] Field with explicit empty string detected: %s\n", fieldName)
+		if hasGenerate {
+			if !templateField.IsPassword {
+				return nil, fmt.Errorf("field %q has generate=true but is not a password field on template %q; only fields with isPassword=true support template-policy generation", fieldName, template.Name)
+			}
+			if hasPasswordValue {
+				return nil, fmt.Errorf("field %q has both generate=true and password_value set; they are mutually exclusive", fieldName)
+			}
+			if hasItemValue {
+				return nil, fmt.Errorf("field %q has both generate=true and itemvalue set; they are mutually exclusive on a password field", fieldName)
 			}
 		}
 
-		// Populate the field object
+		var itemValue string
+		switch {
+		case hasGenerate:
+			pw, err := client.GeneratePassword(templateField.FieldSlugName, template)
+			if err != nil {
+				return nil, fmt.Errorf("failed to generate password for field %q from template policy: %w", fieldName, err)
+			}
+			itemValue = pw
+		case hasPasswordValue:
+			itemValue = field.PasswordValue.ValueString()
+		case hasItemValue:
+			itemValue = field.ItemValue.ValueString()
+		case templateField.IsPassword:
+			// Null/empty plan for a password field on Update: omit entirely so TSS preserves
+			// the existing server-side value rather than blanking it.
+			continue
+		default:
+			itemValue = ""
+			fmt.Printf("[DEBUG] Field with null/empty value detected: %s\n", fieldName)
+		}
+
 		secretField := server.SecretField{
 			FieldDescription: templateField.Description,
 			FieldID:          templateField.SecretTemplateFieldID,
 			FieldName:        templateField.Name,
-			FileAttachmentID: func() int {
-				if !field.ItemValue.IsNull() && field.ItemValue.ValueString() != "" {
-					value, err := strconv.Atoi(field.ItemValue.ValueString())
-					if err == nil {
-						return value
-					}
-				}
-				return 0
-			}(),
-			IsFile:     templateField.IsFile,
-			IsNotes:    templateField.IsNotes,
-			IsPassword: templateField.IsPassword,
-			ItemValue:  itemValue,
-			Slug:       templateField.FieldSlugName,
+			IsFile:           templateField.IsFile,
+			IsNotes:          templateField.IsNotes,
+			IsPassword:       templateField.IsPassword,
+			ItemValue:        itemValue,
+			Slug:             templateField.FieldSlugName,
 		}
 
 		// For file attachments, preserve the FileAttachmentID and Filename
@@ -810,30 +892,35 @@ func flattenSecret(secret *server.Secret) (*SecretResourceState, error) {
 	var fields []SecretField
 
 	for _, f := range secret.Fields {
-		// Handle ItemValue consistently for all fields - all fields can have empty values
 		var itemValue types.String
+		if f.IsPassword {
+			// Never write the server's password value into state. Use an empty
+			// string rather than null so sshKeyFieldPlanModifier's null→""
+			// normalization on a user's un-configured itemvalue doesn't perpetually
+			// diff against null-in-state.
+			itemValue = types.StringValue("")
+		} else {
+			itemValue = types.StringValue(f.ItemValue)
+		}
 
-		// All fields should use StringValue even for empty strings
-		// This ensures Terraform treats empty strings as valid values rather than null
-		itemValue = types.StringValue(f.ItemValue)
-
-		// Add debug logging for empty values
-		if f.ItemValue == "" {
+		if !f.IsPassword && f.ItemValue == "" {
 			fmt.Printf("[DEBUG] Flatten: Field '%s' has empty value\n", f.FieldName)
 		}
 
 		field := SecretField{
-			FieldName:        types.StringValue(f.FieldName),
-			ItemValue:        itemValue,
-			ItemID:           types.Int64Value(int64(f.ItemID)),
-			FieldID:          types.Int64Value(int64(f.FieldID)),
-			FileAttachmentID: types.Int64Value(int64(f.FileAttachmentID)),
-			Slug:             types.StringValue(f.Slug),
-			FieldDescription: types.StringValue(f.FieldDescription),
-			Filename:         types.StringValue(f.Filename),
-			IsFile:           types.BoolValue(f.IsFile),
-			IsNotes:          types.BoolValue(f.IsNotes),
-			IsPassword:       types.BoolValue(f.IsPassword),
+			FieldName:         types.StringValue(f.FieldName),
+			ItemValue:         itemValue,
+			PasswordValue:     types.StringNull(),
+			PasswordWoVersion: types.Int64Null(),
+			ItemID:            types.Int64Value(int64(f.ItemID)),
+			FieldID:           types.Int64Value(int64(f.FieldID)),
+			FileAttachmentID:  types.Int64Value(int64(f.FileAttachmentID)),
+			Slug:              types.StringValue(f.Slug),
+			FieldDescription:  types.StringValue(f.FieldDescription),
+			Filename:          types.StringValue(f.Filename),
+			IsFile:            types.BoolValue(f.IsFile),
+			IsNotes:           types.BoolValue(f.IsNotes),
+			IsPassword:        types.BoolValue(f.IsPassword),
 		}
 
 		// Handle file fields and potential SSH key fields

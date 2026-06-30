@@ -1,0 +1,33 @@
+name: ci
+
+on:
+  pull_request:
+    branches: [main, 'dev/**']
+  push:
+    branches: [main, 'dev/**']
+
+permissions:
+  contents: read
+
+jobs:
+  build-vet-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - name: Set up Go
+        uses: actions/setup-go@0aaccfd150d50ccaeb58ebd88d36e91967a5f35b # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build
+        run: go build ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        # Unit tests only. Acceptance tests (TestAcc*) self-skip because
+        # TF_ACC is not set; they live in delinea/resource_secret_acceptance_test.go
+        # and require a live tenant — run them manually per that file's docstring.
+        # -count=1 disables the test cache so re-runs always execute the suite
+        # (CI must reflect the current commit, not a cached prior result).
+        run: go test ./... -count=1
