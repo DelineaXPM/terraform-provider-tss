@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log"
 	"os"
 
@@ -10,6 +11,11 @@ import (
 )
 
 func main() {
+	var debug bool
+
+	flag.BoolVar(&debug, "debug", false, "set to true to run the provider with support for debuggers like delve")
+	flag.Parse()
+
 	if len(os.Args) >= 2 {
 		action := os.Args[1]
 		stateFile := os.Args[2]
@@ -39,5 +45,6 @@ func main() {
 
 	providerserver.Serve(context.Background(), delinea.New, providerserver.ServeOpts{
 		Address: "registry.terraform.io/DelineaXPM/tss",
+		Debug:   debug,
 	})
 }
