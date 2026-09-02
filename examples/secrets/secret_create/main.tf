@@ -2,8 +2,8 @@ terraform {
   required_version = ">= 1.11.0"
   required_providers {
     tss = {
-      source = "DelineaXPM/tss"
-      version = ">= 4.0.0"
+      source  = "DelineaXPM/tss"
+      version = ">= 5.0.0"
     }
   }
 }
@@ -78,11 +78,11 @@ provider "tss" {
 }
 
 resource "tss_resource_secret" "secret_name" {
-  name = var.tss_secret_name
-  folderid = var.tss_secret_folderid
-  siteid = var.tss_secret_siteid
+  name             = var.tss_secret_name
+  folderid         = var.tss_secret_folderid
+  siteid           = var.tss_secret_siteid
   secrettemplateid = var.tss_secret_templateid
-  active = true
+  active           = true
   dynamic "fields" {
     for_each = var.fields
     content {
@@ -99,7 +99,7 @@ resource "tss_resource_secret" "secret_name" {
       password_wo_version = fields.value.is_password ? var.password_wo_version : null
     }
   }
-  
+
   sshkeyargs {
     generatepassphrase = var.generate_passphrase
     generatesshkeys    = var.generate_ssh_keys
