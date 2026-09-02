@@ -12,7 +12,7 @@ import (
 
 // TSSSecretDeletionResource defines the resource implementation
 type TSSSecretDeletionResource struct {
-	clientConfig *server.Configuration // Store the provider configuration
+	client *server.Server // Shared SDK client built once in Provider.Configure
 }
 
 // SecretDeletionResourceState defines the state structure for the deletion resource
@@ -28,18 +28,7 @@ func (r *TSSSecretDeletionResource) Metadata(ctx context.Context, req resource.M
 
 // Configure initializes the resource with the provider configuration
 func (r *TSSSecretDeletionResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
-	}
-
-	config, ok := req.ProviderData.(*server.Configuration)
-	if !ok {
-		resp.Diagnostics.AddError("Configuration Error", "Failed to retrieve provider configuration")
-		return
-	}
-
-	// Store the provider configuration in the resource
-	r.clientConfig = config
+	r.client = clientFromProviderData(req.ProviderData, &resp.Diagnostics)
 }
 
 // Schema defines the schema for the resource
@@ -70,31 +59,24 @@ func (r *TSSSecretDeletionResource) Create(ctx context.Context, req resource.Cre
 		return
 	}
 
-	// Ensure the client configuration is set
-	if r.clientConfig == nil {
-		resp.Diagnostics.AddError("Client Error", "The server client is not configured")
+	if !requireClient(r.client, &resp.Diagnostics) {
 		return
 	}
 
-	// Create the server client
-	client, err := server.New(*r.clientConfig)
-	if err != nil {
-		resp.Diagnostics.AddError("Configuration Error", fmt.Sprintf("Failed to create server client: %s", err))
-		return
-	}
+	client := r.client
 
 	secretID := int(plan.SecretID.ValueInt64())
 
-	// Check if the secret exists
-	_, err = client.SecretContext(ctx, secretID)
+	// Delete without a pre-check GET: DeleteSecretContext reports its own
+	// failure, and an identity with delete rights but a view restriction
+	// would fail a read-based existence check on a secret it can delete.
+	err := client.DeleteSecretContext(ctx, secretID)
 	if err != nil {
-		resp.Diagnostics.AddError("Secret Not Found", fmt.Sprintf("The secret with ID %d does not exist: %s", secretID, err))
-		return
-	}
-
-	// Delete the secret
-	err = client.DeleteSecretContext(ctx, secretID)
-	if err != nil {
+		if isSecretGone(err) {
+			resp.Diagnostics.AddError("Secret Not Found",
+				fmt.Sprintf("The secret with ID %d does not exist, is already deleted, or the account may not delete it: %s", secretID, err))
+			return
+		}
 		resp.Diagnostics.AddError("Secret Deletion Error", fmt.Sprintf("Failed to delete secret with ID %d: %s", secretID, err))
 		return
 	}
@@ -118,27 +100,27 @@ func (r *TSSSecretDeletionResource) Read(ctx context.Context, req resource.ReadR
 		return
 	}
 
-	// Ensure the client configuration is set
-	if r.clientConfig == nil {
-		resp.Diagnostics.AddError("Client Error", "The server client is not configured")
+	if !requireClient(r.client, &resp.Diagnostics) {
 		return
 	}
 
-	// Create the server client
-	client, err := server.New(*r.clientConfig)
-	if err != nil {
-		resp.Diagnostics.AddError("Configuration Error", fmt.Sprintf("Failed to create server client: %s", err))
-		return
-	}
+	client := r.client
 
 	secretID := int(state.SecretID.ValueInt64())
 
-	// Check if the secret still exists
-	_, err = client.SecretContext(ctx, secretID)
+	// Check if the secret still exists. After a successful delete, classic
+	// Secret Server answers this GET with its ambiguous access-denied
+	// response, so isSecretGone (not just 404) is the expected outcome.
+	_, err := client.SecretContext(ctx, secretID)
 	if err != nil {
-		// Secret doesn't exist, which is what we want
-		diags = resp.State.Set(ctx, state)
-		resp.Diagnostics.Append(diags...)
+		if isSecretGone(err) {
+			// Secret doesn't exist, which is what we want
+			diags = resp.State.Set(ctx, state)
+			resp.Diagnostics.Append(diags...)
+			return
+		}
+		resp.Diagnostics.AddError("Secret Lookup Error",
+			fmt.Sprintf("Failed to verify deletion of secret %d: %s", secretID, err))
 		return
 	}
 

@@ -2,7 +2,6 @@ package delinea
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/DelineaXPM/tss-sdk-go/v3/server"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -12,7 +11,7 @@ import (
 
 // TSSSecretsDataSource defines the data source implementation
 type TSSSecretsDataSource struct {
-	clientConfig *server.Configuration // Store the provider configuration
+	client *server.Server // Shared SDK client built once in Provider.Configure
 }
 
 // Metadata provides the data source type name
@@ -45,7 +44,7 @@ func (d *TSSSecretsDataSource) Schema(ctx context.Context, req datasource.Schema
 						"value": schema.StringAttribute{
 							Computed:    true,
 							Sensitive:   true,
-							Description: "The ephemeral value of the field of the secret",
+							Description: "The value of the field of the secret",
 						},
 					},
 				},
@@ -56,38 +55,14 @@ func (d *TSSSecretsDataSource) Schema(ctx context.Context, req datasource.Schema
 
 // Configure initializes the data source with the provider configuration
 func (d *TSSSecretsDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		// IMPORTANT: This method is called MULTIPLE times. An initial call might not have configured the Provider yet, so we need
-		// to handle this gracefully. It will eventually be called with a configured provider.
-		return
-	}
-
-	// Log the received ProviderData
-	fmt.Printf("DEBUG: ProviderData received in Configure")
-
-	// Retrieve the provider configuration
-	config, ok := req.ProviderData.(*server.Configuration)
-	if !ok {
-		resp.Diagnostics.AddError("Configuration Error", "Failed to retrieve provider configuration")
-		return
-	}
-
-	// Log the successfully retrieved configuration
-	fmt.Printf("DEBUG: Successfully retrieved provider configuration")
-
-	// Store the provider configuration in the data source
-	d.clientConfig = config
-	fmt.Println("DEBUG: Provider configuration stored in clientConfig")
+	d.client = clientFromProviderData(req.ProviderData, &resp.Diagnostics)
 }
 
 func (d *TSSSecretsDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var state struct {
 		IDs     []types.Int64 `tfsdk:"ids"`
 		Field   types.String  `tfsdk:"field"`
-		Secrets []struct {
-			ID    types.Int64  `tfsdk:"id"`
-			Value types.String `tfsdk:"value"`
-		} `tfsdk:"secrets"`
+		Secrets []SecretModel `tfsdk:"secrets"`
 	}
 
 	// Read the configuration
@@ -97,57 +72,15 @@ func (d *TSSSecretsDataSource) Read(ctx context.Context, req datasource.ReadRequ
 		return
 	}
 
-	// Ensure the client configuration is set
-	if d.clientConfig == nil {
-		resp.Diagnostics.AddError("Client Error", "The server client is not configured")
+	if !requireClient(d.client, &resp.Diagnostics) {
 		return
 	}
 
-	// Create the server client
-	secretsClient, err := server.New(*d.clientConfig)
-	if err != nil {
-		resp.Diagnostics.AddError("Configuration Error", fmt.Sprintf("Failed to create server client: %s", err))
+	secretsClient := d.client
+
+	results, ok := fetchSecretModels(ctx, secretsClient, state.IDs, state.Field.ValueString(), &resp.Diagnostics)
+	if !ok {
 		return
-	}
-
-	// Fetch secrets
-	var results []struct {
-		ID    types.Int64  `tfsdk:"id"`
-		Value types.String `tfsdk:"value"`
-	}
-
-	for _, id := range state.IDs {
-		secretID := int(id.ValueInt64())
-
-		fmt.Printf("[DEBUG] getting secret with id %d", secretID)
-
-		// Fetch the secret
-		secret, err := secretsClient.SecretContext(ctx, secretID)
-		if err != nil {
-			resp.Diagnostics.AddWarning("Secret Fetch Warning", fmt.Sprintf("Failed to fetch secret with ID %d: %s", secretID, err))
-			continue // Skip this ID and continue with the rest
-		}
-
-		// Get the field name dynamically
-		fieldName := state.Field.ValueString()
-
-		fmt.Printf("[DEBUG] using '%s' field of secret with id %d", fieldName, secretID)
-
-		// Extract the field value
-		fieldValue, ok := secret.Field(fieldName)
-		if !ok {
-			resp.Diagnostics.AddError("Field Not Found", fmt.Sprintf("The secret does not contain the field '%s'", fieldName))
-			continue
-		}
-
-		// Save the secret value in the state
-		results = append(results, struct {
-			ID    types.Int64  `tfsdk:"id"`
-			Value types.String `tfsdk:"value"`
-		}{
-			ID:    types.Int64Value(int64(secretID)),
-			Value: types.StringValue(fieldValue),
-		})
 	}
 
 	// Set the state

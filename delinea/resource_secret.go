@@ -2,10 +2,12 @@ package delinea
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
+	"github.com/DelineaXPM/delinea-common/api"
 	"github.com/DelineaXPM/tss-sdk-go/v3/server"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -17,7 +19,7 @@ import (
 
 // TSSSecretResource defines the resource implementation
 type TSSSecretResource struct {
-	clientConfig *server.Configuration // Store the provider configuration
+	client *server.Server // Shared SDK client built once in Provider.Configure
 }
 
 // SecretResourceState defines the state structure for the secret resource
@@ -78,21 +80,8 @@ func (r *TSSSecretResource) Metadata(ctx context.Context, req resource.MetadataR
 
 // Configure initializes the resource with the provider configuration
 func (r *TSSSecretResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
-	}
-
-	config, ok := req.ProviderData.(*server.Configuration)
-	if !ok {
-		resp.Diagnostics.AddError("Configuration Error", "Failed to retrieve provider configuration")
-		return
-	}
-
-	// Store the provider configuration in the resource
-	r.clientConfig = config
+	r.client = clientFromProviderData(req.ProviderData, &resp.Diagnostics)
 }
-
-// Create creates the resource
 
 // Create creates the resource
 func (r *TSSSecretResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -107,18 +96,11 @@ func (r *TSSSecretResource) Create(ctx context.Context, req resource.CreateReque
 	}
 	mergeWriteOnlyFieldValues(plan.Fields, config.Fields)
 
-	// Ensure the client configuration is set
-	if r.clientConfig == nil {
-		resp.Diagnostics.AddError("Client Error", "The server client is not configured")
+	if !requireClient(r.client, &resp.Diagnostics) {
 		return
 	}
 
-	// Create the server client
-	client, err := server.New(*r.clientConfig)
-	if err != nil {
-		resp.Diagnostics.AddError("Configuration Error", fmt.Sprintf("Failed to create server client: %s", err))
-		return
-	}
+	client := r.client
 
 	// Get the secret data
 	newSecret, err := r.getSecretData(ctx, &plan, client)
@@ -132,16 +114,55 @@ func (r *TSSSecretResource) Create(ctx context.Context, req resource.CreateReque
 	// Use the client to create the secret
 	createdSecret, err := client.CreateSecretContext(ctx, *newSecret)
 	if err != nil {
-		resp.Diagnostics.AddError("Secret Creation Error", fmt.Sprintf("Failed to create secret: %s", err))
+		// A PartialWriteError means Secret Server accepted the create but a
+		// later SDK step (refresh, file upload) failed or was cancelled. The
+		// secret exists server-side; record its ID so Terraform tracks it as
+		// tainted instead of orphaning it and creating a duplicate next apply.
+		if pwe, ok := errors.AsType[*server.PartialWriteError](err); ok {
+			if pwe.SecretID != 0 {
+				recordTaintedSecret(ctx, resp, pwe.SecretID, "Secret Partially Created",
+					fmt.Sprintf("Secret %d was created on Secret Server but a later step failed: %s.", pwe.SecretID, err))
+				return
+			}
+			resp.Diagnostics.AddError("Secret Possibly Created",
+				fmt.Sprintf("Secret Server may have accepted the create, but the response did not yield a usable secret ID: %s. "+
+					"Before re-applying, check Secret Server for a secret named %q and delete it, or the next apply may create a duplicate.", err, newSecret.Name))
+			return
+		}
+		// A rejection the server actually sent back (4xx), or a failure the
+		// SDK classifies as configuration/auth/authorization — all of which
+		// happen before or instead of a committed write — means the secret
+		// was not created. Anything else — timeout, cancellation, connection
+		// loss — leaves the outcome unknown: the POST may have committed
+		// after the client gave up.
+		he, isHTTP := errors.AsType[*server.HTTPError](err)
+		if (isHTTP && he.StatusCode >= 400 && he.StatusCode < 500) ||
+			errors.Is(err, api.ErrConfig) || errors.Is(err, api.ErrAuth) || errors.Is(err, api.ErrAccessDenied) {
+			resp.Diagnostics.AddError("Secret Creation Error", fmt.Sprintf("Failed to create secret: %s", err))
+			return
+		}
+		resp.Diagnostics.AddError("Secret Creation Error",
+			fmt.Sprintf("Failed to create secret: %s. The request may still have reached Secret Server; "+
+				"before re-applying, check for a secret named %q and delete it, or the next apply may create a duplicate.", err, newSecret.Name))
 		return
 	}
 
 	fmt.Printf("Secret is Created successfully...!")
 
 	// Refresh state - let Terraform accept the computed values from the server
-	newState, readDiags := r.readSecretByID(ctx, createdSecret.ID, client, plan.Fields)
+	newState, notFound, readDiags := r.readSecretByID(ctx, createdSecret.ID, client, plan.SecretTemplateID, plan.Fields)
 	resp.Diagnostics.Append(readDiags...)
+	if notFound {
+		// The create succeeded but the server now reports the secret gone.
+		recordTaintedSecret(ctx, resp, createdSecret.ID, "Secret Created, Then Reported Gone",
+			fmt.Sprintf("Secret %d was created but Secret Server reports it no longer exists.", createdSecret.ID))
+		return
+	}
 	if resp.Diagnostics.HasError() {
+		// The create succeeded; only the refresh failed. Record the ID so
+		// Terraform tracks the secret as tainted instead of orphaning it.
+		recordTaintedSecret(ctx, resp, createdSecret.ID, "Secret Created, Refresh Failed",
+			fmt.Sprintf("Secret %d was created but reading it back failed.", createdSecret.ID))
 		return
 	}
 
@@ -185,18 +206,11 @@ func (r *TSSSecretResource) Update(ctx context.Context, req resource.UpdateReque
 	}
 	mergeWriteOnlyFieldValues(plan.Fields, config.Fields)
 
-	// Ensure the client configuration is set
-	if r.clientConfig == nil {
-		resp.Diagnostics.AddError("Client Error", "The server client is not configured")
+	if !requireClient(r.client, &resp.Diagnostics) {
 		return
 	}
 
-	// Create the server client
-	client, err := server.New(*r.clientConfig)
-	if err != nil {
-		resp.Diagnostics.AddError("Configuration Error", fmt.Sprintf("Failed to create server client: %s", err))
-		return
-	}
+	client := r.client
 
 	// Get the secret data
 	// During update, we shouldn't send SSH key generation parameters
@@ -269,6 +283,12 @@ func (r *TSSSecretResource) Update(ctx context.Context, req resource.UpdateReque
 	fmt.Printf("[DEBUG] updating secret with id %d", updatedSecret.ID)
 	_, err = client.UpdateSecretContext(ctx, *updatedSecret)
 	if err != nil {
+		if _, ok := errors.AsType[*server.PartialWriteError](err); ok {
+			resp.Diagnostics.AddError("Secret Partially Updated",
+				fmt.Sprintf("Secret Server accepted the update for secret %d but a later step failed: %s. "+
+					"State keeps the pre-update values; the next apply re-runs the update and converges.", updatedSecret.ID, err))
+			return
+		}
 		resp.Diagnostics.AddError("Secret Update Error", fmt.Sprintf("Failed to update secret: %s", err))
 		return
 	}
@@ -276,7 +296,12 @@ func (r *TSSSecretResource) Update(ctx context.Context, req resource.UpdateReque
 	fmt.Printf("Secret is Updated successfully...!")
 
 	//Refresh state
-	newState, readDiags := r.readSecretByID(ctx, updatedSecret.ID, client, plan.Fields)
+	newState, notFound, readDiags := r.readSecretByID(ctx, updatedSecret.ID, client, plan.SecretTemplateID, plan.Fields)
+	if notFound {
+		resp.Diagnostics.AddError("Secret Missing After Update",
+			fmt.Sprintf("Secret %d was updated but no longer exists on Secret Server. It may have been deleted concurrently; the next plan will show the discrepancy.", updatedSecret.ID))
+		return
+	}
 	resp.Diagnostics.Append(readDiags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -343,24 +368,36 @@ func (r *TSSSecretResource) Delete(ctx context.Context, req resource.DeleteReque
 		return
 	}
 
-	// Ensure the client configuration is set
-	if r.clientConfig == nil {
-		resp.Diagnostics.AddError("Client Error", "The server client is not configured")
+	if !requireClient(r.client, &resp.Diagnostics) {
 		return
 	}
 
 	fmt.Printf("[DEBUG] deleting secret with id %d", int(state.ID.ValueInt64()))
 
-	// Create the server client
-	client, err := server.New(*r.clientConfig)
-	if err != nil {
-		resp.Diagnostics.AddError("Configuration Error", fmt.Sprintf("Failed to create server client: %s", err))
-		return
-	}
+	client := r.client
 
 	// Delete the secret
-	err = client.DeleteSecretContext(ctx, int(state.ID.ValueInt64()))
+	secretID := int(state.ID.ValueInt64())
+	err := client.DeleteSecretContext(ctx, secretID)
 	if err != nil {
+		// Classic Secret Server answers a DELETE of an already-deleted secret
+		// with the same ambiguous access-denied status it uses for a
+		// policy-refused DELETE of a live secret (checkout, DoubleLock,
+		// revoked permission), so disambiguate with a follow-up GET: a
+		// readable secret proves the DELETE was refused, while a GET that
+		// also reports it gone makes the idempotent-destroy interpretation
+		// safe — e.g. a tainted phantom ID no longer wedges every replace.
+		if isSecretGone(err) {
+			if _, getErr := client.SecretContext(ctx, secretID); getErr == nil {
+				resp.Diagnostics.AddError("Secret Deletion Refused",
+					fmt.Sprintf("Secret Server refused to delete secret %d (%s) but the secret still exists — it may be checked out, DoubleLocked, or the account may lack delete permission.", secretID, err))
+				return
+			} else if isSecretGone(getErr) {
+				resp.Diagnostics.AddWarning("Secret Already Absent",
+					fmt.Sprintf("Deleting secret %d reported it as already deleted or inaccessible (%s), and it is not readable either; it has been removed from state.", secretID, err))
+				return
+			}
+		}
 		resp.Diagnostics.AddError("Secret Deletion Error", fmt.Sprintf("Failed to delete secret: %s", err))
 		return
 	}
@@ -585,23 +622,22 @@ func (r *TSSSecretResource) Read(ctx context.Context, req resource.ReadRequest, 
 		return
 	}
 
-	// Ensure the client configuration is set
-	if r.clientConfig == nil {
-		resp.Diagnostics.AddError("Client Error", "The server client is not configured")
+	if !requireClient(r.client, &resp.Diagnostics) {
 		return
 	}
 
 	fmt.Printf("[DEBUG] getting secret with id %d", int(state.ID.ValueInt64()))
 
-	// Create the server client
-	client, err := server.New(*r.clientConfig)
-	if err != nil {
-		resp.Diagnostics.AddError("Configuration Error", fmt.Sprintf("Failed to create server client: %s", err))
-		return
-	}
+	client := r.client
 
 	// Retrieve the secret
-	newState, readDiags := r.readSecretByID(ctx, int(state.ID.ValueInt64()), client, state.Fields)
+	newState, notFound, readDiags := r.readSecretByID(ctx, int(state.ID.ValueInt64()), client, state.SecretTemplateID, state.Fields)
+	if notFound {
+		// The secret was deleted outside Terraform; drop it from state so the
+		// next plan recreates it instead of wedging every refresh.
+		resp.State.RemoveResource(ctx)
+		return
+	}
 	resp.Diagnostics.Append(readDiags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -650,33 +686,65 @@ func (r *TSSSecretResource) Read(ctx context.Context, req resource.ReadRequest, 
 	resp.Diagnostics.Append(diags...)
 }
 
-func (r *TSSSecretResource) readSecretByID(ctx context.Context, id int, client *server.Server, reference []SecretField) (*SecretResourceState, diag.Diagnostics) {
-	// Create the server client
-	client, err := server.New(*r.clientConfig)
-	if err != nil {
-		return nil, diag.Diagnostics{
-			diag.NewErrorDiagnostic("Configuration Error", fmt.Sprintf("Failed to create server client: %s", err)),
-		}
-	}
+// recordTaintedSecret persists just the secret's ID so Terraform tracks a
+// created-but-unconfirmed secret as tainted instead of orphaning it, then
+// reports the failure with the standard replace-on-next-apply guidance.
+func recordTaintedSecret(ctx context.Context, resp *resource.CreateResponse, id int, summary, detail string) {
+	partialState := SecretResourceState{ID: types.Int64Value(int64(id))}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &partialState)...)
+	resp.Diagnostics.AddError(summary,
+		detail+" The secret ID has been recorded in state; Terraform will replace the resource on the next apply.")
+}
 
+// readSecretByID fetches a secret and converts it to resource state. notFound
+// is true only for a definitive 404 on a secret whose template carries no
+// file fields: the SDK's attachment sub-requests surface their own 404s
+// indistinguishably from the primary GET, and the secret's real field set —
+// which the template describes, unlike the config-aligned reference — decides
+// whether those sub-requests run. Classic Secret Server reports deleted
+// secrets as access denied (never 404); that case surfaces as an error with
+// recovery guidance.
+func (r *TSSSecretResource) readSecretByID(ctx context.Context, id int, client *server.Server, templateID types.String, reference []SecretField) (state *SecretResourceState, notFound bool, diags diag.Diagnostics) {
 	// Retrieve the secret using the provided client
 	secret, err := client.SecretContext(ctx, id)
 	if err != nil {
-		return nil, diag.Diagnostics{
-			diag.NewErrorDiagnostic("Secret Retrieval Error", fmt.Sprintf("Failed to retrieve secret: %s", err)),
+		if isSecretNotFound(err) {
+			if tid, convErr := stringToInt(templateID); convErr == nil {
+				if template, tErr := client.SecretTemplateContext(ctx, tid); tErr == nil && !templateHasFileField(template) {
+					return nil, true, nil
+				}
+			}
+		}
+		detail := fmt.Sprintf("Failed to retrieve secret: %s.", err)
+		if isSecretGone(err) {
+			detail += fmt.Sprintf(" Secret Server reports deleted secrets as access denied, so if secret %d was deleted outside Terraform, remove it with `terraform state rm` and re-apply.", id)
+		}
+		return nil, false, diag.Diagnostics{
+			diag.NewErrorDiagnostic("Secret Retrieval Error", detail),
 		}
 	}
 
-	state, err := flattenSecret(secret)
+	state, err = flattenSecret(secret)
 	if err != nil {
-		return nil, diag.Diagnostics{
+		return nil, false, diag.Diagnostics{
 			diag.NewErrorDiagnostic("State Error", fmt.Sprintf("Failed to flatten secret: %s", err)),
 		}
 	}
 
 	state.Fields = alignFieldsToReference(state.Fields, reference)
 
-	return state, nil
+	return state, false, nil
+}
+
+// templateHasFileField reports whether the template defines any file
+// attachment field.
+func templateHasFileField(template *server.SecretTemplate) bool {
+	for _, f := range template.Fields {
+		if f.IsFile {
+			return true
+		}
+	}
+	return false
 }
 
 // mergeWriteOnlyFieldValues copies write-only attribute values (password_value)
@@ -755,11 +823,16 @@ func (r *TSSSecretResource) getSecretData(ctx context.Context, state *SecretReso
 		fieldName := field.FieldName.ValueString()
 
 		// Match the field name with the template fields
+		matched := false
 		for _, record := range template.Fields {
 			if strings.EqualFold(record.Name, fieldName) || strings.EqualFold(record.FieldSlugName, fieldName) {
 				templateField = record
+				matched = true
 				break
 			}
+		}
+		if !matched {
+			return nil, fmt.Errorf("field %q is not defined on template %q (id %d); check the fieldname against the template's field names or slugs", fieldName, template.Name, templateID)
 		}
 
 		hasGenerate := !field.Generate.IsNull() && field.Generate.ValueBool()

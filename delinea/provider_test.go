@@ -2,6 +2,7 @@ package delinea
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -105,6 +106,148 @@ func TestResolveProviderConfig_EmptyStringInConfigFallsToEnv(t *testing.T) {
 	}
 	if got.ServerURL.ValueString() != "https://env.example.com/SecretServer" {
 		t.Errorf("explicit empty in config should fall through to env; got %q", got.ServerURL.ValueString())
+	}
+}
+
+func TestResolveProviderConfig_AllowInsecureHTTPFromEnv(t *testing.T) {
+	env := fakeEnv(map[string]string{
+		"TSS_SERVER_URL":          "http://internal.example.com/SecretServer",
+		"TSS_USERNAME":            "alice",
+		"TSS_PASSWORD":            "hunter2",
+		"TSS_ALLOW_INSECURE_HTTP": "true",
+	})
+	got, errs := resolveProviderConfig(TSSProviderModel{}, env)
+	if len(errs) != 0 {
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+	if !got.AllowInsecureHTTP.ValueBool() {
+		t.Error("AllowInsecureHTTP: got false, want true from env")
+	}
+}
+
+func TestResolveProviderConfig_AllowInsecureHTTPConfigBeatsEnv(t *testing.T) {
+	in := TSSProviderModel{AllowInsecureHTTP: types.BoolValue(false)}
+	env := fakeEnv(map[string]string{
+		"TSS_SERVER_URL":          "https://example/SecretServer",
+		"TSS_USERNAME":            "alice",
+		"TSS_PASSWORD":            "hunter2",
+		"TSS_ALLOW_INSECURE_HTTP": "true",
+	})
+	got, errs := resolveProviderConfig(in, env)
+	if len(errs) != 0 {
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+	if got.AllowInsecureHTTP.ValueBool() {
+		t.Error("explicit config false must beat env true")
+	}
+}
+
+func TestResolveProviderConfig_AllowInsecureHTTPInvalidEnv(t *testing.T) {
+	env := fakeEnv(map[string]string{
+		"TSS_SERVER_URL":          "http://example/SecretServer",
+		"TSS_USERNAME":            "alice",
+		"TSS_PASSWORD":            "hunter2",
+		"TSS_ALLOW_INSECURE_HTTP": "yes-please",
+	})
+	_, errs := resolveProviderConfig(TSSProviderModel{}, env)
+	if len(errs) != 2 {
+		t.Fatalf("got %d errors for invalid provider environment, want 2: %v", len(errs), errs)
+	}
+	if !strings.Contains(errs[0], "TSS_ALLOW_INSECURE_HTTP must be a boolean") {
+		t.Fatalf("unexpected error: %s", errs[0])
+	}
+	if !strings.Contains(errs[1], "Invalid server URL") {
+		t.Fatalf("unexpected error: %s", errs[1])
+	}
+}
+
+func TestResolveProviderConfig_AllowInsecureHTTPDefaultsUnset(t *testing.T) {
+	env := fakeEnv(map[string]string{
+		"TSS_SERVER_URL": "https://example/SecretServer",
+		"TSS_USERNAME":   "alice",
+		"TSS_PASSWORD":   "hunter2",
+	})
+	got, errs := resolveProviderConfig(TSSProviderModel{}, env)
+	if len(errs) != 0 {
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+	if !got.AllowInsecureHTTP.IsNull() {
+		t.Errorf("AllowInsecureHTTP must stay null when unset everywhere, got %v", got.AllowInsecureHTTP)
+	}
+}
+
+func TestResolveProviderConfig_AllowInsecureHTTPUnknownErrors(t *testing.T) {
+	in := TSSProviderModel{AllowInsecureHTTP: types.BoolUnknown()}
+	env := fakeEnv(map[string]string{
+		"TSS_SERVER_URL":          "http://internal.example.com/SecretServer",
+		"TSS_USERNAME":            "alice",
+		"TSS_PASSWORD":            "hunter2",
+		"TSS_ALLOW_INSECURE_HTTP": "true",
+	})
+	_, errs := resolveProviderConfig(in, env)
+	if len(errs) == 0 {
+		t.Fatal("unknown allow_insecure_http must error like the string attributes, not resolve from env or collapse to false")
+	}
+	if !strings.Contains(errs[0], "allow_insecure_http") || !strings.Contains(errs[0], "not known") {
+		t.Errorf("error must name the unknown attribute, got: %s", errs[0])
+	}
+}
+
+func TestResolveProviderConfig_UnknownStringValueErrorsInsteadOfEnvOverride(t *testing.T) {
+	in := TSSProviderModel{ServerURL: types.StringUnknown()}
+	env := fakeEnv(map[string]string{
+		"TSS_SERVER_URL": "https://staging.example.com/SecretServer",
+		"TSS_USERNAME":   "alice",
+		"TSS_PASSWORD":   "hunter2",
+	})
+	_, errs := resolveProviderConfig(in, env)
+	if len(errs) == 0 {
+		t.Fatal("unknown server_url must error, not silently use TSS_SERVER_URL")
+	}
+	if !strings.Contains(errs[0], "server_url") || !strings.Contains(errs[0], "not known") {
+		t.Errorf("error must name the unknown attribute, got: %s", errs[0])
+	}
+}
+
+func TestResolveProviderConfig_RemotePlaintextHTTPRejected(t *testing.T) {
+	env := fakeEnv(map[string]string{
+		"TSS_SERVER_URL": "http://secretserver.corp/SecretServer",
+		"TSS_USERNAME":   "alice",
+		"TSS_PASSWORD":   "hunter2",
+	})
+	_, errs := resolveProviderConfig(TSSProviderModel{}, env)
+	if len(errs) == 0 {
+		t.Fatal("expected error for remote plaintext http server_url, got none")
+	}
+	if !strings.Contains(errs[0], "allow_insecure_http") {
+		t.Errorf("error must name the allow_insecure_http opt-in, got: %s", errs[0])
+	}
+}
+
+func TestResolveProviderConfig_LoopbackPlaintextHTTPAllowed(t *testing.T) {
+	for _, host := range []string{"localhost", "127.0.0.1", "[::1]"} {
+		env := fakeEnv(map[string]string{
+			"TSS_SERVER_URL": "http://" + host + "/SecretServer",
+			"TSS_USERNAME":   "alice",
+			"TSS_PASSWORD":   "hunter2",
+		})
+		_, errs := resolveProviderConfig(TSSProviderModel{}, env)
+		if len(errs) != 0 {
+			t.Errorf("loopback http host %s must pass, got %v", host, errs)
+		}
+	}
+}
+
+func TestResolveProviderConfig_RemotePlaintextHTTPOptInAccepted(t *testing.T) {
+	in := TSSProviderModel{AllowInsecureHTTP: types.BoolValue(true)}
+	env := fakeEnv(map[string]string{
+		"TSS_SERVER_URL": "http://secretserver.corp/SecretServer",
+		"TSS_USERNAME":   "alice",
+		"TSS_PASSWORD":   "hunter2",
+	})
+	_, errs := resolveProviderConfig(in, env)
+	if len(errs) != 0 {
+		t.Fatalf("explicit opt-in must pass, got %v", errs)
 	}
 }
 
