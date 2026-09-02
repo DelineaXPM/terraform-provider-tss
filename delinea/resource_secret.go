@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/DelineaXPM/tss-sdk-go/v2/server"
+	"github.com/DelineaXPM/tss-sdk-go/v3/server"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -130,7 +130,7 @@ func (r *TSSSecretResource) Create(ctx context.Context, req resource.CreateReque
 	fmt.Printf("[DEBUG] creating secret with name %s", newSecret.Name)
 
 	// Use the client to create the secret
-	createdSecret, err := client.CreateSecret(*newSecret)
+	createdSecret, err := client.CreateSecretContext(ctx, *newSecret)
 	if err != nil {
 		resp.Diagnostics.AddError("Secret Creation Error", fmt.Sprintf("Failed to create secret: %s", err))
 		return
@@ -267,7 +267,7 @@ func (r *TSSSecretResource) Update(ctx context.Context, req resource.UpdateReque
 	// Update the secret
 	updatedSecret.ID = int(state.ID.ValueInt64())
 	fmt.Printf("[DEBUG] updating secret with id %d", updatedSecret.ID)
-	_, err = client.UpdateSecret(*updatedSecret)
+	_, err = client.UpdateSecretContext(ctx, *updatedSecret)
 	if err != nil {
 		resp.Diagnostics.AddError("Secret Update Error", fmt.Sprintf("Failed to update secret: %s", err))
 		return
@@ -359,7 +359,7 @@ func (r *TSSSecretResource) Delete(ctx context.Context, req resource.DeleteReque
 	}
 
 	// Delete the secret
-	err = client.DeleteSecret(int(state.ID.ValueInt64()))
+	err = client.DeleteSecretContext(ctx, int(state.ID.ValueInt64()))
 	if err != nil {
 		resp.Diagnostics.AddError("Secret Deletion Error", fmt.Sprintf("Failed to delete secret: %s", err))
 		return
@@ -660,7 +660,7 @@ func (r *TSSSecretResource) readSecretByID(ctx context.Context, id int, client *
 	}
 
 	// Retrieve the secret using the provided client
-	secret, err := client.Secret(id)
+	secret, err := client.SecretContext(ctx, id)
 	if err != nil {
 		return nil, diag.Diagnostics{
 			diag.NewErrorDiagnostic("Secret Retrieval Error", fmt.Sprintf("Failed to retrieve secret: %s", err)),
@@ -743,7 +743,7 @@ func (r *TSSSecretResource) getSecretData(ctx context.Context, state *SecretReso
 	}
 
 	// Fetch the secret template
-	template, err := client.SecretTemplate(templateID)
+	template, err := client.SecretTemplateContext(ctx, templateID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve secret template: %w", err)
 	}
@@ -781,7 +781,7 @@ func (r *TSSSecretResource) getSecretData(ctx context.Context, state *SecretReso
 		var itemValue string
 		switch {
 		case hasGenerate:
-			pw, err := client.GeneratePassword(templateField.FieldSlugName, template)
+			pw, err := client.GeneratePasswordContext(ctx, templateField.FieldSlugName, template)
 			if err != nil {
 				return nil, fmt.Errorf("failed to generate password for field %q from template policy: %w", fieldName, err)
 			}

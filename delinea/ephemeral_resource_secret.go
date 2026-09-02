@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/DelineaXPM/tss-sdk-go/v2/server"
+	"github.com/DelineaXPM/tss-sdk-go/v3/server"
 	"github.com/hashicorp/terraform-plugin-framework/ephemeral"
 	"github.com/hashicorp/terraform-plugin-framework/ephemeral/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -94,7 +94,7 @@ func (r *TSSSecretEphemeralResource) Open(ctx context.Context, req ephemeral.Ope
 	log.Printf("[DEBUG] getting secret with id %d", secretID)
 
 	// Fetch the secret from the server using Delinea SDK
-	secret, err := client.Secret(secretID)
+	secret, err := client.SecretContext(ctx, secretID)
 	if err != nil {
 		resp.Diagnostics.AddError("Secret Fetch Error", err.Error())
 		return
@@ -165,7 +165,7 @@ func (r *TSSSecretEphemeralResource) Renew(ctx context.Context, req ephemeral.Re
 	log.Printf("[DEBUG] getting secret with id %d to renew data", secretID)
 
 	// Fetch the secret from the server
-	secret, err := client.Secret(secretID)
+	secret, err := client.SecretContext(ctx, secretID)
 	if err != nil {
 		resp.Diagnostics.AddError("Secret Fetch Error", err.Error())
 		return

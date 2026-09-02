@@ -7,7 +7,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/DelineaXPM/tss-sdk-go/v2/server"
+	"github.com/DelineaXPM/tss-sdk-go/v3/server"
 	"github.com/hashicorp/terraform-plugin-framework/ephemeral"
 	"github.com/hashicorp/terraform-plugin-framework/ephemeral/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -110,7 +110,7 @@ func (r *TSSSecretsEphemeralResource) Open(ctx context.Context, req ephemeral.Op
 		log.Printf("[DEBUG] getting secret with id %d", secretID)
 
 		// Fetch the secret
-		secret, err := client.Secret(secretID)
+		secret, err := client.SecretContext(ctx, secretID)
 		if err != nil {
 			resp.Diagnostics.AddWarning("Secret Fetch Warning", fmt.Sprintf("Failed to fetch secret with ID %d: %s", secretID, err))
 			continue // Skip this ID and continue with the rest
@@ -190,7 +190,7 @@ func (r *TSSSecretsEphemeralResource) Renew(ctx context.Context, req ephemeral.R
 		log.Printf("[DEBUG] getting secret with id %d to renew data", secretID)
 
 		// Fetch the secret
-		secret, err := client.Secret(secretID)
+		secret, err := client.SecretContext(ctx, secretID)
 		if err != nil {
 			resp.Diagnostics.AddWarning("Secret Fetch Warning", fmt.Sprintf("Failed to fetch secret with ID %d: %s", secretID, err))
 			continue // Skip this ID and continue with the rest

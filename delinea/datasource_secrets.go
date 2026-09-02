@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/DelineaXPM/tss-sdk-go/v2/server"
+	"github.com/DelineaXPM/tss-sdk-go/v3/server"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -122,7 +122,7 @@ func (d *TSSSecretsDataSource) Read(ctx context.Context, req datasource.ReadRequ
 		fmt.Printf("[DEBUG] getting secret with id %d", secretID)
 
 		// Fetch the secret
-		secret, err := secretsClient.Secret(secretID)
+		secret, err := secretsClient.SecretContext(ctx, secretID)
 		if err != nil {
 			resp.Diagnostics.AddWarning("Secret Fetch Warning", fmt.Sprintf("Failed to fetch secret with ID %d: %s", secretID, err))
 			continue // Skip this ID and continue with the rest

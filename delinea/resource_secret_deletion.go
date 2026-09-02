@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/DelineaXPM/tss-sdk-go/v2/server"
+	"github.com/DelineaXPM/tss-sdk-go/v3/server"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -86,14 +86,14 @@ func (r *TSSSecretDeletionResource) Create(ctx context.Context, req resource.Cre
 	secretID := int(plan.SecretID.ValueInt64())
 
 	// Check if the secret exists
-	_, err = client.Secret(secretID)
+	_, err = client.SecretContext(ctx, secretID)
 	if err != nil {
 		resp.Diagnostics.AddError("Secret Not Found", fmt.Sprintf("The secret with ID %d does not exist: %s", secretID, err))
 		return
 	}
 
 	// Delete the secret
-	err = client.DeleteSecret(secretID)
+	err = client.DeleteSecretContext(ctx, secretID)
 	if err != nil {
 		resp.Diagnostics.AddError("Secret Deletion Error", fmt.Sprintf("Failed to delete secret with ID %d: %s", secretID, err))
 		return
@@ -134,7 +134,7 @@ func (r *TSSSecretDeletionResource) Read(ctx context.Context, req resource.ReadR
 	secretID := int(state.SecretID.ValueInt64())
 
 	// Check if the secret still exists
-	_, err = client.Secret(secretID)
+	_, err = client.SecretContext(ctx, secretID)
 	if err != nil {
 		// Secret doesn't exist, which is what we want
 		diags = resp.State.Set(ctx, state)
