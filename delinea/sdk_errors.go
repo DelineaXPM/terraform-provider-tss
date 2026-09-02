@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/DelineaXPM/delinea-common/api"
 	"github.com/DelineaXPM/tss-sdk-go/v3/server"
@@ -247,10 +246,6 @@ func secretFieldValue(secret *server.Secret, name string) (string, int) {
 		}
 	}
 	return value, matches
-}
-
-func fieldNameMatches(name, canonical, slug string) bool {
-	return strings.EqualFold(name, canonical) || slug != "" && strings.EqualFold(name, slug)
 }
 
 type SecretModel struct {

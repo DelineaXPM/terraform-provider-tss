@@ -7,6 +7,8 @@ import (
 	"github.com/DelineaXPM/tss-sdk-go/v3/server"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -34,11 +36,14 @@ func (r *TSSSecretDeletionResource) Configure(ctx context.Context, req resource.
 // Schema defines the schema for the resource
 func (r *TSSSecretDeletionResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "A resource to delete secrets by ID without requiring them to be in the Terraform state.",
+		Description: "A one-shot resource that deletes a secret by ID without requiring it to be in Terraform state. A completed operation remains in state and does not delete a later-restored secret again.",
 		Attributes: map[string]schema.Attribute{
 			"secret_id": schema.Int64Attribute{
 				Required:    true,
-				Description: "The ID of the secret to delete.",
+				Description: "The ID of the secret to delete. Changing it replaces the operation and deletes the newly selected secret.",
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.RequiresReplace(),
+				},
 			},
 			"id": schema.StringAttribute{
 				Computed:    true,
@@ -65,19 +70,29 @@ func (r *TSSSecretDeletionResource) Create(ctx context.Context, req resource.Cre
 
 	client := r.client
 
-	secretID := int(plan.SecretID.ValueInt64())
+	secretID, err := toPositiveServerInt(plan.SecretID.ValueInt64(), "secret_id")
+	if err != nil {
+		resp.Diagnostics.AddError("Invalid Secret ID", err.Error())
+		return
+	}
 
 	// Delete without a pre-check GET: DeleteSecretContext reports its own
 	// failure, and an identity with delete rights but a view restriction
 	// would fail a read-based existence check on a secret it can delete.
-	err := client.DeleteSecretContext(ctx, secretID)
+	err = client.DeleteSecretContext(ctx, secretID)
 	if err != nil {
-		if isSecretGone(err) {
-			resp.Diagnostics.AddError("Secret Not Found",
-				fmt.Sprintf("The secret with ID %d does not exist, is already deleted, or the account may not delete it: %s", secretID, err))
+		if isAuthenticationFailure(err) {
+			resp.Diagnostics.AddError("Secret Authentication or Authorization Failed", authenticationFailureDetail("delete", secretID, err))
 			return
 		}
-		resp.Diagnostics.AddError("Secret Deletion Error", fmt.Sprintf("Failed to delete secret with ID %d: %s", secretID, err))
+		switch classifyDeleteFailure(ctx, client, secretID, err) {
+		case deleteRefused:
+			resp.Diagnostics.AddError("Secret Deletion Refused", deleteRefusedDetail(secretID, err))
+		case deleteAmbiguous:
+			resp.Diagnostics.AddError("Secret Deletion Unverified", deleteAmbiguousDetail(secretID, err, false))
+		default:
+			resp.Diagnostics.AddError("Secret Deletion Error", fmt.Sprintf("Failed to delete secret with ID %d: %s", secretID, err))
+		}
 		return
 	}
 
@@ -106,31 +121,40 @@ func (r *TSSSecretDeletionResource) Read(ctx context.Context, req resource.ReadR
 
 	client := r.client
 
-	secretID := int(state.SecretID.ValueInt64())
+	secretID, err := toPositiveServerInt(state.SecretID.ValueInt64(), "secret_id")
+	if err != nil {
+		resp.Diagnostics.AddError("Invalid Secret ID", err.Error())
+		return
+	}
 
-	// Check if the secret still exists. After a successful delete, classic
-	// Secret Server answers this GET with its ambiguous access-denied
-	// response, so isSecretGone (not just 404) is the expected outcome.
-	_, err := client.SecretContext(ctx, secretID)
+	// The resource records a completed one-shot operation. Expected absent and
+	// recycled responses retain that record; a visibly active secret is warned
+	// about without scheduling another destructive action.
+	secret, err := client.SecretContext(ctx, secretID)
 	if err != nil {
 		if isSecretGone(err) {
-			// Secret doesn't exist, which is what we want
 			diags = resp.State.Set(ctx, state)
 			resp.Diagnostics.Append(diags...)
+			return
+		}
+		if isAuthenticationFailure(err) {
+			resp.Diagnostics.AddError("Secret Authentication or Authorization Failed", authenticationFailureDetail("verify deletion of", secretID, err))
 			return
 		}
 		resp.Diagnostics.AddError("Secret Lookup Error",
 			fmt.Sprintf("Failed to verify deletion of secret %d: %s", secretID, err))
 		return
 	}
+	if !secret.Active {
+		diags = resp.State.Set(ctx, state)
+		resp.Diagnostics.Append(diags...)
+		return
+	}
 
-	// Secret still exists, report as removed from state
 	resp.Diagnostics.AddWarning(
 		"Secret Still Exists",
-		fmt.Sprintf("Secret with ID %d still exists even though it was marked for deletion. This might indicate that the deletion failed or was reverted.", secretID),
+		fmt.Sprintf("Secret with ID %d is active even though its one-shot deletion operation completed. Terraform will retain the operation record and will not delete the secret again automatically; remove the resource from state and re-apply only if another deletion is intended.", secretID),
 	)
-
-	// Still keep the state
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
 }
