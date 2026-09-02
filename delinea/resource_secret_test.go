@@ -1580,6 +1580,31 @@ func TestAlignFieldsToReference_ScrubsPasswordUsingPriorIdentity(t *testing.T) {
 	}
 }
 
+func TestSecretToState_RejectsPasswordClassificationDowngrade(t *testing.T) {
+	secret := &server.Secret{
+		ID:               42,
+		Name:             "s",
+		FolderID:         1,
+		SiteID:           1,
+		SecretTemplateID: 2,
+		Fields: []server.SecretField{{
+			FieldID:    7,
+			FieldName:  "Password",
+			Slug:       "password",
+			ItemValue:  "must-not-enter-state",
+			IsPassword: false,
+		}},
+	}
+	for _, reference := range []SecretField{
+		{FieldName: types.StringValue("Password"), Slug: types.StringValue("password"), IsPassword: types.BoolValue(true)},
+		{FieldName: types.StringValue("Password"), Slug: types.StringValue("password"), PasswordWoVersion: types.Int64Value(1)},
+	} {
+		if _, err := secretToState(secret, []SecretField{reference}); err == nil || !strings.Contains(err.Error(), "previously treated as a password") {
+			t.Fatalf("secretToState error = %v", err)
+		}
+	}
+}
+
 func TestGetSecretDataWithTemplate_RejectsAmbiguousFieldAlias(t *testing.T) {
 	template := &server.SecretTemplate{ID: 2, Name: "collision", Fields: []server.SecretTemplateField{
 		{SecretTemplateFieldID: 7, Name: "Account", FieldSlugName: "account-name"},

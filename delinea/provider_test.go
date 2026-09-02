@@ -8,8 +8,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// fakeEnv builds a getenv-compatible func from a map. Empty/missing keys
-// return "", which the resolver treats the same as unset.
 func fakeEnv(m map[string]string) func(string) string {
 	return func(k string) string { return m[k] }
 }
@@ -38,9 +36,6 @@ func TestResolveProviderConfig_AllFromEnv(t *testing.T) {
 	}
 }
 
-// gh #108 reproducer: docs claim TSS_USERNAME / TSS_PASSWORD / TSS_SERVER_URL
-// work with no provider block. Without the env-var fallback, terraform plan
-// would prompt for provider.tss.password.
 func TestResolveProviderConfig_GH108EnvOnlyAuthSucceeds(t *testing.T) {
 	emptyConfig := TSSProviderModel{}
 	env := fakeEnv(map[string]string{
@@ -90,7 +85,7 @@ func TestResolveProviderConfig_ConfigBeatsEnv(t *testing.T) {
 
 func TestResolveProviderConfig_EmptyStringInConfigFallsToEnv(t *testing.T) {
 	in := TSSProviderModel{
-		ServerURL: types.StringValue(""), // explicit empty
+		ServerURL: types.StringValue(""),
 		Username:  types.StringValue(""),
 		Password:  types.StringValue(""),
 	}
@@ -262,16 +257,19 @@ func TestResolveProviderConfig_TokenFromEnv(t *testing.T) {
 	}
 }
 
-// Validation cases.
-
 func TestResolveProviderConfig_MissingServerURL(t *testing.T) {
 	env := fakeEnv(map[string]string{
 		"TSS_USERNAME": "alice",
 		"TSS_PASSWORD": "hunter2",
 	})
 	_, errs := resolveProviderConfig(TSSProviderModel{}, env)
-	if len(errs) == 0 {
-		t.Fatal("expected error for missing server_url, got none")
+	assertSingleErrorContains(t, errs, "Server URL is required")
+}
+
+func assertSingleErrorContains(t *testing.T, errs []string, want string) {
+	t.Helper()
+	if len(errs) != 1 || !strings.Contains(errs[0], want) {
+		t.Fatalf("errs = %q, want exactly one containing %q", errs, want)
 	}
 }
 
@@ -280,9 +278,7 @@ func TestResolveProviderConfig_MissingCredentials(t *testing.T) {
 		"TSS_SERVER_URL": "https://example/SecretServer",
 	})
 	_, errs := resolveProviderConfig(TSSProviderModel{}, env)
-	if len(errs) == 0 {
-		t.Fatal("expected error for missing credentials, got none")
-	}
+	assertSingleErrorContains(t, errs, "Credentials missing")
 }
 
 func TestResolveProviderConfig_UsernameWithoutPassword(t *testing.T) {
@@ -291,9 +287,7 @@ func TestResolveProviderConfig_UsernameWithoutPassword(t *testing.T) {
 		Username:  types.StringValue("alice"),
 	}
 	_, errs := resolveProviderConfig(in, fakeEnv(nil))
-	if len(errs) == 0 {
-		t.Fatal("expected error for username without password, got none")
-	}
+	assertSingleErrorContains(t, errs, "Username is set but password is missing")
 }
 
 func TestResolveProviderConfig_PasswordWithoutUsername(t *testing.T) {
@@ -302,9 +296,7 @@ func TestResolveProviderConfig_PasswordWithoutUsername(t *testing.T) {
 		Password:  types.StringValue("hunter2"),
 	}
 	_, errs := resolveProviderConfig(in, fakeEnv(nil))
-	if len(errs) == 0 {
-		t.Fatal("expected error for password without username, got none")
-	}
+	assertSingleErrorContains(t, errs, "Password is set but username is missing")
 }
 
 func TestResolveProviderConfig_BothUsernameAndToken(t *testing.T) {
@@ -315,12 +307,19 @@ func TestResolveProviderConfig_BothUsernameAndToken(t *testing.T) {
 		Token:     types.StringValue("abc123"),
 	}
 	_, errs := resolveProviderConfig(in, fakeEnv(nil))
-	if len(errs) == 0 {
-		t.Fatal("expected error for username/password and token both set, got none")
-	}
+	assertSingleErrorContains(t, errs, "Provide either username/password OR token, not both")
 }
 
-// Mixed config + env: username in config, password from env.
+func TestResolveProviderConfig_BothPasswordAndToken(t *testing.T) {
+	in := TSSProviderModel{
+		ServerURL: types.StringValue("https://example/SecretServer"),
+		Password:  types.StringValue("hunter2"),
+		Token:     types.StringValue("abc123"),
+	}
+	_, errs := resolveProviderConfig(in, fakeEnv(nil))
+	assertSingleErrorContains(t, errs, "Provide either username/password OR token, not both")
+}
+
 func TestResolveProviderConfig_MixedConfigAndEnv(t *testing.T) {
 	in := TSSProviderModel{
 		ServerURL: types.StringValue("https://example/SecretServer"),

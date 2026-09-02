@@ -217,7 +217,38 @@ func TestAcceptanceDeletionVerifier_CorroboratesBadRequestWithSearch(t *testing.
 		}
 		return true
 	})
-	if err := testAccVerifySecretAbsent(client, 1, "unique-name"); err != nil {
+	if err := testAccVerifySecretAbsent(client, 1, "unique-name", false); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAcceptanceDeletionVerifier_AcceptsPlatformSignalsAfterSuccessfulDelete(t *testing.T) {
+	for _, response := range []func(http.ResponseWriter){
+		func(w http.ResponseWriter) { respondStatus(w, http.StatusNotFound) },
+		func(w http.ResponseWriter) { respondSecret(w, 1, false) },
+	} {
+		client := newFakeSecretServer(t, func(w http.ResponseWriter, r *http.Request) bool {
+			if r.URL.Path != "/api/v1/secrets/1" {
+				return false
+			}
+			response(w)
+			return true
+		})
+		if err := testAccVerifySecretAbsent(client, 1, "unique-name", true); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestAcceptanceDeleteFixture_AcceptsNotFoundFromDelete(t *testing.T) {
+	client := newFakeSecretServer(t, func(w http.ResponseWriter, r *http.Request) bool {
+		if r.URL.Path != "/api/v1/secrets/1" || r.Method != http.MethodDelete {
+			return false
+		}
+		respondStatus(w, http.StatusNotFound)
+		return true
+	})
+	if err := testAccDeleteFixture(client, 1, "unique-name"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -267,7 +298,7 @@ func TestAcceptanceDeletionVerifier_RejectsAmbiguousSignals(t *testing.T) {
 			response(w)
 			return true
 		})
-		if err := testAccVerifySecretAbsent(client, 1, "unique-name"); err == nil {
+		if err := testAccVerifySecretAbsent(client, 1, "unique-name", false); err == nil {
 			t.Fatal("ambiguous deletion signal was accepted")
 		}
 	}

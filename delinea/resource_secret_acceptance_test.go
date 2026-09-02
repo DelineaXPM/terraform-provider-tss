@@ -57,7 +57,7 @@ func testAccClient() (*server.Server, error) {
 	return testAccLiveClient, testAccLiveClientErr
 }
 
-func testAccVerifySecretAbsent(client *server.Server, id int, name string) error {
+func testAccVerifySecretAbsent(client *server.Server, id int, name string, deleteSucceeded bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	ticker := time.NewTicker(time.Second)
@@ -82,12 +82,18 @@ func testAccVerifySecretAbsent(client *server.Server, id int, name string) error
 					}
 					return nil
 				case http.StatusNotFound:
+					if deleteSucceeded {
+						return nil
+					}
 					return fmt.Errorf("verifying deletion of secret %d returned ambiguous HTTP 404; the SDK cannot distinguish a missing secret from a missing attachment: %w", id, err)
 				}
 			}
 			return fmt.Errorf("verifying deletion of secret %d: %w", id, err)
 		}
 		if !secret.Active {
+			if deleteSucceeded {
+				return nil
+			}
 			return fmt.Errorf("secret %d remains readable with active=false, which does not prove deletion", id)
 		}
 		select {
@@ -119,7 +125,7 @@ func testAccCheckDestroy(state *terraform.State) error {
 		if !ok || name == "" {
 			return fmt.Errorf("%s has no name in pre-destroy state", address)
 		}
-		if err := testAccVerifySecretAbsent(client, id, name); err != nil {
+		if err := testAccVerifySecretAbsent(client, id, name, true); err != nil {
 			return fmt.Errorf("%s: %w", address, err)
 		}
 	}
@@ -881,8 +887,11 @@ func testAccDeleteFixture(client *server.Server, id int, name string) error {
 	if err == nil {
 		return nil
 	}
+	if isSecretNotFound(err) {
+		return nil
+	}
 	if isSecretGone(err) {
-		return testAccVerifySecretAbsent(client, id, name)
+		return testAccVerifySecretAbsent(client, id, name, false)
 	}
 	return err
 }
@@ -916,7 +925,7 @@ resource "tss_secret_deletion" "test" {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("tss_secret_deletion.test", "id", fmt.Sprintf("secret_%d", secretID)),
 					func(*terraform.State) error {
-						return testAccVerifySecretAbsent(client, secretID, secretName)
+						return testAccVerifySecretAbsent(client, secretID, secretName, true)
 					},
 				),
 			},
@@ -955,13 +964,13 @@ resource "tss_secret_deletion" "test" {
 			{
 				Config: configFor(firstID),
 				Check: func(*terraform.State) error {
-					return testAccVerifySecretAbsent(client, firstID, firstName)
+					return testAccVerifySecretAbsent(client, firstID, firstName, true)
 				},
 			},
 			{
 				Config: configFor(secondID),
 				Check: func(*terraform.State) error {
-					return testAccVerifySecretAbsent(client, secondID, secondName)
+					return testAccVerifySecretAbsent(client, secondID, secondName, true)
 				},
 			},
 		},
