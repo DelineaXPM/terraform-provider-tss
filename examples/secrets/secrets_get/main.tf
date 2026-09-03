@@ -2,8 +2,8 @@ terraform {
   required_version = ">= 1.11.0"
   required_providers {
     tss = {
-      source = "DelineaXPM/tss"
-      version = "3.0.0"
+      source  = "DelineaXPM/tss"
+      version = ">= 5.0.0"
     }
   }
 }
@@ -31,12 +31,12 @@ provider "tss" {
 }
 
 data "tss_secrets" "my_usernames" {
-  ids    = var.tss_secret_ids
+  ids   = var.tss_secret_ids
   field = "username"
 }
 
 data "tss_secrets" "my_passwords" {
-  ids    = var.tss_secret_ids
+  ids   = var.tss_secret_ids
   field = "password"
 }
 
@@ -45,7 +45,7 @@ output "usernames" {
     id    = secret.id
     value = secret.value
   }]
-  sensitive =true
+  sensitive = true
 }
 
 output "passwords" {
@@ -53,5 +53,5 @@ output "passwords" {
     id    = secret.id
     value = secret.value
   }]
-  sensitive =true
+  sensitive = true
 }

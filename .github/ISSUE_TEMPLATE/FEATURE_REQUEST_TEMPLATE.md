@@ -5,7 +5,7 @@ about: If you have a feature or enhancement request
 
 ## Feature / Enhancement proposed
 
-_What capability would you like to add? Is it something you currently you cannot do? Is this related to an issue/problem?_
+_What capability would you like to add? Is it something you currently cannot do? Is this related to an issue/problem?_
 
 ## Workarounds
 
@@ -19,4 +19,5 @@ _If yes, Please provide a link to relevant issues and PRs._
 
 _(Help can be provided if you need assistance submitting a PR)_
 
-[] Yes [] No
+- [ ] Yes
+- [ ] No

@@ -1,9 +1,9 @@
-# Visit https://goreleaser.com for documentation on how to customize this
+# GoReleaser configuration for the Terraform Registry publishing flow.
+# See https://goreleaser.com and
+# https://developer.hashicorp.com/terraform/registry/providers/publishing
 version: 2
-# behavior.
 before:
   hooks:
-    # this is just an example and not a requirement for provider building/publishing
     - go mod tidy
 builds:
 - env:
@@ -29,17 +29,25 @@ builds:
   ignore:
     - goos: darwin
       goarch: '386'
+    - goos: windows
+      goarch: arm
   binary: '{{ .ProjectName }}_v{{ .Version }}'
 archives:
-- format: zip
+- formats: [zip]
   name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
 checksum:
+  # The registry requires the manifest to be listed in SHA256SUMS alongside
+  # the archives, so it is added as an extra checksummed file rather than a
+  # release-only extra file.
+  extra_files:
+    - glob: 'terraform-registry-manifest.json'
+      name_template: '{{ .ProjectName }}_{{ .Version }}_manifest.json'
   name_template: '{{ .ProjectName }}_{{ .Version }}_SHA256SUMS'
   algorithm: sha256
 signs:
   - artifacts: checksum
     args:
-      # if you are using this in a GitHub action or some other automated pipeline, you 
+      # if you are using this in a GitHub action or some other automated pipeline, you
       # need to pass the batch flag to indicate its not interactive.
       - "--batch"
       - "--local-user"
@@ -49,6 +57,9 @@ signs:
       - "--detach-sign"
       - "${artifact}"
 release:
+  extra_files:
+    - glob: 'terraform-registry-manifest.json'
+      name_template: '{{ .ProjectName }}_{{ .Version }}_manifest.json'
   # If you want to manually examine the release before its live, uncomment this line:
   # draft: true
 changelog:
