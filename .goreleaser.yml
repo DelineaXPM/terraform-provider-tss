@@ -2,6 +2,10 @@
 # See https://goreleaser.com and
 # https://developer.hashicorp.com/terraform/registry/providers/publishing
 version: 2
+# The Terraform Registry requires terraform-provider-tss_<version>_<os>_<arch>.zip.
+# Pin the name: without a git remote goreleaser would infer it from the Go module
+# path, whose last segment is the major-version suffix "v5".
+project_name: terraform-provider-tss
 before:
   hooks:
     - go mod tidy
