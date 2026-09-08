@@ -3,6 +3,7 @@ package delinea
 import (
 	"context"
 	"fmt"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"net/http"
 	"reflect"
 	"strings"
@@ -1728,5 +1729,63 @@ func TestRecordTaintedSecret_PersistsRecoveryIdentifiers(t *testing.T) {
 	}
 	if state.Fields != nil {
 		t.Fatalf("partial state retained fields: %#v", state.Fields)
+	}
+}
+
+func TestWarnIfSecretWentInactive(t *testing.T) {
+	cases := map[string]struct {
+		previous, current types.Bool
+		wantWarning       bool
+	}{
+		"active stays active":           {types.BoolValue(true), types.BoolValue(true), false},
+		"active became inactive":        {types.BoolValue(true), types.BoolValue(false), true},
+		"unknown prior became inactive": {types.BoolUnknown(), types.BoolValue(false), true},
+		"null prior became inactive":    {types.BoolNull(), types.BoolValue(false), true},
+		"intentionally inactive":        {types.BoolValue(false), types.BoolValue(false), false},
+		"inactive restored to active":   {types.BoolValue(false), types.BoolValue(true), false},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			var diags diag.Diagnostics
+			warnIfSecretWentInactive(&diags, 42, c.previous, c.current)
+			if got := diags.WarningsCount() == 1; got != c.wantWarning {
+				t.Fatalf("warning emitted = %v, want %v (%v)", got, c.wantWarning, diags)
+			}
+			if c.wantWarning && diags[0].Summary() != "Secret Inactive" {
+				t.Fatalf("summary = %q", diags[0].Summary())
+			}
+		})
+	}
+}
+
+func TestSecretResourceRead_RecycledSecretWarns(t *testing.T) {
+	client := newFakeSecretServer(t, func(w http.ResponseWriter, r *http.Request) bool {
+		if r.URL.Path != "/api/v1/secrets/1" {
+			return false
+		}
+		respondSecret(w, 1, false)
+		return true
+	})
+	schemaResponse := &resource.SchemaResponse{}
+	(&TSSSecretResource{}).Schema(context.Background(), resource.SchemaRequest{}, schemaResponse)
+	state := tfsdk.State{Schema: schemaResponse.Schema}
+	if diags := state.Set(context.Background(), SecretResourceState{
+		ID: types.Int64Value(1), Name: types.StringValue("s1"), FolderID: types.StringValue("7"), SiteID: types.StringValue("1"),
+		SecretTemplateID: types.StringValue("2"), Active: types.BoolValue(true),
+		Fields: []SecretField{{FieldName: types.StringValue("Password")}},
+	}); diags.HasError() {
+		t.Fatalf("state diagnostics: %v", diags)
+	}
+	response := &resource.ReadResponse{State: state}
+	(&TSSSecretResource{client: client}).Read(context.Background(), resource.ReadRequest{State: state}, response)
+	if response.Diagnostics.HasError() {
+		t.Fatalf("unexpected error: %v", response.Diagnostics)
+	}
+	if response.Diagnostics.WarningsCount() != 1 || response.Diagnostics[0].Summary() != "Secret Inactive" || !strings.Contains(response.Diagnostics[0].Detail(), "deleted outside Terraform") {
+		t.Fatalf("diagnostics = %v", response.Diagnostics)
+	}
+	var got SecretResourceState
+	if diags := response.State.Get(context.Background(), &got); diags.HasError() || got.Active.ValueBool() {
+		t.Fatalf("state after read: active=%v diags=%v", got.Active, diags)
 	}
 }

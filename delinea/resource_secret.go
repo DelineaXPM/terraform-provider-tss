@@ -631,9 +631,27 @@ func (r *TSSSecretResource) Read(ctx context.Context, req resource.ReadRequest, 
 		newState.SshKeyArgs = state.SshKeyArgs
 	}
 
+	warnIfSecretWentInactive(&resp.Diagnostics, secretID, state.Active, newState.Active)
+
 	// Set the state
 	diags = resp.State.Set(ctx, newState)
 	resp.Diagnostics.Append(diags...)
+}
+
+// warnIfSecretWentInactive flags a managed secret that Secret Server now
+// reports inactive although Terraform last recorded it active. Accounts that
+// may view deleted secrets read a recycled secret back with Active=false and
+// HTTP 200 rather than the anti-enumeration 400, so without this warning an
+// out-of-band deletion would be indistinguishable from a healthy secret.
+func warnIfSecretWentInactive(diags *diag.Diagnostics, id int, previous, current types.Bool) {
+	if current.IsNull() || current.ValueBool() {
+		return
+	}
+	if !previous.IsNull() && !previous.IsUnknown() && !previous.ValueBool() {
+		return
+	}
+	diags.AddWarning("Secret Inactive",
+		fmt.Sprintf("Secret %d is inactive on Secret Server although Terraform last recorded it as active. Secret Server reports a deleted (recycled) secret this way to accounts permitted to view deleted secrets, so it may have been deleted outside Terraform. Set active = false in the configuration if the deactivation is intended; otherwise restore the secret in Secret Server or run `terraform state rm` and re-apply to recreate it.", id))
 }
 
 // recordTaintedSecret persists the identifiers needed to verify absence and

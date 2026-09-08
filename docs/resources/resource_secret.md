@@ -63,6 +63,8 @@ Every optional secret-level setting (`active`, `checkoutenabled`, `requirescomme
 
 If Secret Server reports the secret as inaccessible during refresh, the provider keeps the resource in state and returns an error instead of silently planning a replacement. Classic Secret Server answers both "deleted" and "no permission" with the same HTTP 400, and a 404 can come from an attachment download on a live secret, so neither response proves the secret is gone. When you have confirmed a secret was deleted outside Terraform, run `terraform state rm` on the resource and apply again.
 
+Accounts permitted to view deleted secrets are the exception: Secret Server returns a recycled secret to them with `active = false` instead of an error. Refresh then succeeds and emits a `Secret Inactive` warning whenever a secret Terraform last recorded as active comes back inactive, so an out-of-band deletion is still visible. Set `active = false` in the configuration if the deactivation is intended; otherwise restore the secret or run `terraform state rm` and re-apply.
+
 ### SSH key generation
 
 Set the `sshkeyargs` block when the template supports SSH key generation. Secret Server generates keys only while creating a secret, so changing the block replaces the secret. Leave the generated fields' `itemvalue` unset; the provider records the generated values after apply and preserves them across later updates.
