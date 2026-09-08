@@ -1,0 +1,68 @@
+name: Live acceptance tests
+
+on:
+  schedule:
+    - cron: '29 6 * * 1'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-acceptance
+  cancel-in-progress: false
+
+env:
+  GOWORK: 'off'
+
+jobs:
+  check-provisioned:
+    name: Check live-tests environment
+    environment: live-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      provisioned: ${{ steps.probe.outputs.provisioned }}
+    steps:
+      - name: Probe for environment secrets
+        id: probe
+        env:
+          TSS_SERVER_URL: ${{ secrets.TSS_SERVER_URL }}
+          TSS_USERNAME: ${{ secrets.TSS_USERNAME }}
+          TSS_PASSWORD: ${{ secrets.TSS_PASSWORD }}
+          TSS_TOKEN: ${{ secrets.TSS_TOKEN }}
+          TSS_TEST_FOLDER_ID: ${{ secrets.TSS_TEST_FOLDER_ID }}
+        run: |
+          if [ -n "$TSS_SERVER_URL" ] && [ -n "$TSS_TEST_FOLDER_ID" ] && { [ -n "$TSS_TOKEN" ] || { [ -n "$TSS_USERNAME" ] && [ -n "$TSS_PASSWORD" ]; }; }; then
+            echo "provisioned=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "provisioned=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::live-tests environment secrets are not fully provisioned (need TSS_SERVER_URL, TSS_TEST_FOLDER_ID, and either TSS_TOKEN or TSS_USERNAME plus TSS_PASSWORD); skipping the acceptance suite"
+          fi
+
+  acceptance:
+    name: TF_ACC (${{ matrix.name }})
+    needs: check-provisioned
+    if: needs.check-provisioned.outputs.provisioned == 'true'
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - name: Terraform 1.11.0 floor
+            terraform_version: '1.11.0'
+            canary: false
+          - name: Terraform 1.15.9 current
+            terraform_version: '1.15.9'
+            canary: false
+          - name: Terraform latest canary
+            terraform_version: 'latest'
+            canary: true
+    uses: ./.github/workflows/acceptance-suite.yml
+    with:
+      terraform_version: ${{ matrix.terraform_version }}
+      require_all_tests: false
+      # A caller job cannot set continue-on-error on a reusable workflow, so
+      # the canary's allowed-to-fail behavior lives inside the called workflow.
+      canary: ${{ matrix.canary }}
+    secrets: inherit

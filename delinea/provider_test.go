@@ -2,13 +2,12 @@ package delinea
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// fakeEnv builds a getenv-compatible func from a map. Empty/missing keys
-// return "", which the resolver treats the same as unset.
 func fakeEnv(m map[string]string) func(string) string {
 	return func(k string) string { return m[k] }
 }
@@ -37,9 +36,6 @@ func TestResolveProviderConfig_AllFromEnv(t *testing.T) {
 	}
 }
 
-// gh #108 reproducer: docs claim TSS_USERNAME / TSS_PASSWORD / TSS_SERVER_URL
-// work with no provider block. Without the env-var fallback, terraform plan
-// would prompt for provider.tss.password.
 func TestResolveProviderConfig_GH108EnvOnlyAuthSucceeds(t *testing.T) {
 	emptyConfig := TSSProviderModel{}
 	env := fakeEnv(map[string]string{
@@ -89,7 +85,7 @@ func TestResolveProviderConfig_ConfigBeatsEnv(t *testing.T) {
 
 func TestResolveProviderConfig_EmptyStringInConfigFallsToEnv(t *testing.T) {
 	in := TSSProviderModel{
-		ServerURL: types.StringValue(""), // explicit empty
+		ServerURL: types.StringValue(""),
 		Username:  types.StringValue(""),
 		Password:  types.StringValue(""),
 	}
@@ -108,6 +104,148 @@ func TestResolveProviderConfig_EmptyStringInConfigFallsToEnv(t *testing.T) {
 	}
 }
 
+func TestResolveProviderConfig_AllowInsecureHTTPFromEnv(t *testing.T) {
+	env := fakeEnv(map[string]string{
+		"TSS_SERVER_URL":          "http://internal.example.com/SecretServer",
+		"TSS_USERNAME":            "alice",
+		"TSS_PASSWORD":            "hunter2",
+		"TSS_ALLOW_INSECURE_HTTP": "true",
+	})
+	got, errs := resolveProviderConfig(TSSProviderModel{}, env)
+	if len(errs) != 0 {
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+	if !got.AllowInsecureHTTP.ValueBool() {
+		t.Error("AllowInsecureHTTP: got false, want true from env")
+	}
+}
+
+func TestResolveProviderConfig_AllowInsecureHTTPConfigBeatsEnv(t *testing.T) {
+	in := TSSProviderModel{AllowInsecureHTTP: types.BoolValue(false)}
+	env := fakeEnv(map[string]string{
+		"TSS_SERVER_URL":          "https://example/SecretServer",
+		"TSS_USERNAME":            "alice",
+		"TSS_PASSWORD":            "hunter2",
+		"TSS_ALLOW_INSECURE_HTTP": "true",
+	})
+	got, errs := resolveProviderConfig(in, env)
+	if len(errs) != 0 {
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+	if got.AllowInsecureHTTP.ValueBool() {
+		t.Error("explicit config false must beat env true")
+	}
+}
+
+func TestResolveProviderConfig_AllowInsecureHTTPInvalidEnv(t *testing.T) {
+	env := fakeEnv(map[string]string{
+		"TSS_SERVER_URL":          "http://example/SecretServer",
+		"TSS_USERNAME":            "alice",
+		"TSS_PASSWORD":            "hunter2",
+		"TSS_ALLOW_INSECURE_HTTP": "yes-please",
+	})
+	_, errs := resolveProviderConfig(TSSProviderModel{}, env)
+	if len(errs) != 2 {
+		t.Fatalf("got %d errors for invalid provider environment, want 2: %v", len(errs), errs)
+	}
+	if !strings.Contains(errs[0], "TSS_ALLOW_INSECURE_HTTP must be a boolean") {
+		t.Fatalf("unexpected error: %s", errs[0])
+	}
+	if !strings.Contains(errs[1], "Invalid server URL") {
+		t.Fatalf("unexpected error: %s", errs[1])
+	}
+}
+
+func TestResolveProviderConfig_AllowInsecureHTTPDefaultsUnset(t *testing.T) {
+	env := fakeEnv(map[string]string{
+		"TSS_SERVER_URL": "https://example/SecretServer",
+		"TSS_USERNAME":   "alice",
+		"TSS_PASSWORD":   "hunter2",
+	})
+	got, errs := resolveProviderConfig(TSSProviderModel{}, env)
+	if len(errs) != 0 {
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+	if !got.AllowInsecureHTTP.IsNull() {
+		t.Errorf("AllowInsecureHTTP must stay null when unset everywhere, got %v", got.AllowInsecureHTTP)
+	}
+}
+
+func TestResolveProviderConfig_AllowInsecureHTTPUnknownErrors(t *testing.T) {
+	in := TSSProviderModel{AllowInsecureHTTP: types.BoolUnknown()}
+	env := fakeEnv(map[string]string{
+		"TSS_SERVER_URL":          "http://internal.example.com/SecretServer",
+		"TSS_USERNAME":            "alice",
+		"TSS_PASSWORD":            "hunter2",
+		"TSS_ALLOW_INSECURE_HTTP": "true",
+	})
+	_, errs := resolveProviderConfig(in, env)
+	if len(errs) == 0 {
+		t.Fatal("unknown allow_insecure_http must error like the string attributes, not resolve from env or collapse to false")
+	}
+	if !strings.Contains(errs[0], "allow_insecure_http") || !strings.Contains(errs[0], "not known") {
+		t.Errorf("error must name the unknown attribute, got: %s", errs[0])
+	}
+}
+
+func TestResolveProviderConfig_UnknownStringValueErrorsInsteadOfEnvOverride(t *testing.T) {
+	in := TSSProviderModel{ServerURL: types.StringUnknown()}
+	env := fakeEnv(map[string]string{
+		"TSS_SERVER_URL": "https://staging.example.com/SecretServer",
+		"TSS_USERNAME":   "alice",
+		"TSS_PASSWORD":   "hunter2",
+	})
+	_, errs := resolveProviderConfig(in, env)
+	if len(errs) == 0 {
+		t.Fatal("unknown server_url must error, not silently use TSS_SERVER_URL")
+	}
+	if !strings.Contains(errs[0], "server_url") || !strings.Contains(errs[0], "not known") {
+		t.Errorf("error must name the unknown attribute, got: %s", errs[0])
+	}
+}
+
+func TestResolveProviderConfig_RemotePlaintextHTTPRejected(t *testing.T) {
+	env := fakeEnv(map[string]string{
+		"TSS_SERVER_URL": "http://secretserver.corp/SecretServer",
+		"TSS_USERNAME":   "alice",
+		"TSS_PASSWORD":   "hunter2",
+	})
+	_, errs := resolveProviderConfig(TSSProviderModel{}, env)
+	if len(errs) == 0 {
+		t.Fatal("expected error for remote plaintext http server_url, got none")
+	}
+	if !strings.Contains(errs[0], "allow_insecure_http") {
+		t.Errorf("error must name the allow_insecure_http opt-in, got: %s", errs[0])
+	}
+}
+
+func TestResolveProviderConfig_LoopbackPlaintextHTTPAllowed(t *testing.T) {
+	for _, host := range []string{"localhost", "127.0.0.1", "[::1]"} {
+		env := fakeEnv(map[string]string{
+			"TSS_SERVER_URL": "http://" + host + "/SecretServer",
+			"TSS_USERNAME":   "alice",
+			"TSS_PASSWORD":   "hunter2",
+		})
+		_, errs := resolveProviderConfig(TSSProviderModel{}, env)
+		if len(errs) != 0 {
+			t.Errorf("loopback http host %s must pass, got %v", host, errs)
+		}
+	}
+}
+
+func TestResolveProviderConfig_RemotePlaintextHTTPOptInAccepted(t *testing.T) {
+	in := TSSProviderModel{AllowInsecureHTTP: types.BoolValue(true)}
+	env := fakeEnv(map[string]string{
+		"TSS_SERVER_URL": "http://secretserver.corp/SecretServer",
+		"TSS_USERNAME":   "alice",
+		"TSS_PASSWORD":   "hunter2",
+	})
+	_, errs := resolveProviderConfig(in, env)
+	if len(errs) != 0 {
+		t.Fatalf("explicit opt-in must pass, got %v", errs)
+	}
+}
+
 func TestResolveProviderConfig_TokenFromEnv(t *testing.T) {
 	env := fakeEnv(map[string]string{
 		"TSS_SERVER_URL": "https://example/SecretServer",
@@ -119,16 +257,19 @@ func TestResolveProviderConfig_TokenFromEnv(t *testing.T) {
 	}
 }
 
-// Validation cases.
-
 func TestResolveProviderConfig_MissingServerURL(t *testing.T) {
 	env := fakeEnv(map[string]string{
 		"TSS_USERNAME": "alice",
 		"TSS_PASSWORD": "hunter2",
 	})
 	_, errs := resolveProviderConfig(TSSProviderModel{}, env)
-	if len(errs) == 0 {
-		t.Fatal("expected error for missing server_url, got none")
+	assertSingleErrorContains(t, errs, "Server URL is required")
+}
+
+func assertSingleErrorContains(t *testing.T, errs []string, want string) {
+	t.Helper()
+	if len(errs) != 1 || !strings.Contains(errs[0], want) {
+		t.Fatalf("errs = %q, want exactly one containing %q", errs, want)
 	}
 }
 
@@ -137,9 +278,7 @@ func TestResolveProviderConfig_MissingCredentials(t *testing.T) {
 		"TSS_SERVER_URL": "https://example/SecretServer",
 	})
 	_, errs := resolveProviderConfig(TSSProviderModel{}, env)
-	if len(errs) == 0 {
-		t.Fatal("expected error for missing credentials, got none")
-	}
+	assertSingleErrorContains(t, errs, "Credentials missing")
 }
 
 func TestResolveProviderConfig_UsernameWithoutPassword(t *testing.T) {
@@ -148,9 +287,7 @@ func TestResolveProviderConfig_UsernameWithoutPassword(t *testing.T) {
 		Username:  types.StringValue("alice"),
 	}
 	_, errs := resolveProviderConfig(in, fakeEnv(nil))
-	if len(errs) == 0 {
-		t.Fatal("expected error for username without password, got none")
-	}
+	assertSingleErrorContains(t, errs, "Username is set but password is missing")
 }
 
 func TestResolveProviderConfig_PasswordWithoutUsername(t *testing.T) {
@@ -159,9 +296,7 @@ func TestResolveProviderConfig_PasswordWithoutUsername(t *testing.T) {
 		Password:  types.StringValue("hunter2"),
 	}
 	_, errs := resolveProviderConfig(in, fakeEnv(nil))
-	if len(errs) == 0 {
-		t.Fatal("expected error for password without username, got none")
-	}
+	assertSingleErrorContains(t, errs, "Password is set but username is missing")
 }
 
 func TestResolveProviderConfig_BothUsernameAndToken(t *testing.T) {
@@ -172,12 +307,19 @@ func TestResolveProviderConfig_BothUsernameAndToken(t *testing.T) {
 		Token:     types.StringValue("abc123"),
 	}
 	_, errs := resolveProviderConfig(in, fakeEnv(nil))
-	if len(errs) == 0 {
-		t.Fatal("expected error for username/password and token both set, got none")
-	}
+	assertSingleErrorContains(t, errs, "Provide either username/password OR token, not both")
 }
 
-// Mixed config + env: username in config, password from env.
+func TestResolveProviderConfig_BothPasswordAndToken(t *testing.T) {
+	in := TSSProviderModel{
+		ServerURL: types.StringValue("https://example/SecretServer"),
+		Password:  types.StringValue("hunter2"),
+		Token:     types.StringValue("abc123"),
+	}
+	_, errs := resolveProviderConfig(in, fakeEnv(nil))
+	assertSingleErrorContains(t, errs, "Provide either username/password OR token, not both")
+}
+
 func TestResolveProviderConfig_MixedConfigAndEnv(t *testing.T) {
 	in := TSSProviderModel{
 		ServerURL: types.StringValue("https://example/SecretServer"),

@@ -1,0 +1,93 @@
+# Reusable live acceptance suite shared by the release gate and the scheduled
+# run. Callers pick the Terraform version and whether every cell must run.
+name: acceptance-suite
+
+on:
+  workflow_call:
+    inputs:
+      terraform_version:
+        description: Terraform CLI version passed to hashicorp/setup-terraform
+        required: true
+        type: string
+      require_all_tests:
+        description: >-
+          Fail before running when TSS_TEST_SSH_TEMPLATE_ID or
+          TSS_TEST_MIXED_TEMPLATE_ID is unset, so the SSH-key and
+          mixed-template tests cannot pass by skipping.
+        required: false
+        type: boolean
+        default: false
+      canary:
+        description: >-
+          Allow the suite to fail without failing the job (used for the
+          unpinned latest-Terraform cell).
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  GOWORK: 'off'
+
+jobs:
+  acceptance:
+    name: TF_ACC (Terraform ${{ inputs.terraform_version }})
+    continue-on-error: ${{ inputs.canary }}
+    environment: live-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ inputs.terraform_version }}
+          terraform_wrapper: false
+      - name: Select Terraform CLI
+        run: echo "TF_ACC_TERRAFORM_PATH=$(command -v terraform)" >> "$GITHUB_ENV"
+      - name: Require the live-tests environment
+        env:
+          TSS_SERVER_URL: ${{ secrets.TSS_SERVER_URL }}
+          TSS_USERNAME: ${{ secrets.TSS_USERNAME }}
+          TSS_PASSWORD: ${{ secrets.TSS_PASSWORD }}
+          TSS_TOKEN: ${{ secrets.TSS_TOKEN }}
+          TSS_TEST_FOLDER_ID: ${{ secrets.TSS_TEST_FOLDER_ID }}
+          TSS_TEST_SSH_TEMPLATE_ID: ${{ vars.TSS_TEST_SSH_TEMPLATE_ID }}
+          TSS_TEST_MIXED_TEMPLATE_ID: ${{ vars.TSS_TEST_MIXED_TEMPLATE_ID }}
+          REQUIRE_ALL_TESTS: ${{ inputs.require_all_tests }}
+        run: |
+          if [ -z "$TSS_SERVER_URL" ] || [ -z "$TSS_TEST_FOLDER_ID" ] || { [ -z "$TSS_TOKEN" ] && { [ -z "$TSS_USERNAME" ] || [ -z "$TSS_PASSWORD" ]; }; }; then
+            echo "The live-tests environment requires TSS_SERVER_URL, TSS_TEST_FOLDER_ID, and either TSS_TOKEN or TSS_USERNAME plus TSS_PASSWORD." >&2
+            exit 1
+          fi
+          if [ "$REQUIRE_ALL_TESTS" = "true" ] && { [ -z "$TSS_TEST_SSH_TEMPLATE_ID" ] || [ -z "$TSS_TEST_MIXED_TEMPLATE_ID" ]; }; then
+            echo "The release gate requires the TSS_TEST_SSH_TEMPLATE_ID and TSS_TEST_MIXED_TEMPLATE_ID repository variables so the SSH-key acceptance tests run instead of skipping." >&2
+            exit 1
+          fi
+      - name: Run acceptance suite
+        env:
+          TF_ACC: '1'
+          TF_ACC_REQUIRE_ALL_TESTS: ${{ inputs.require_all_tests && '1' || '' }}
+          TSS_SERVER_URL: ${{ secrets.TSS_SERVER_URL }}
+          TSS_USERNAME: ${{ secrets.TSS_USERNAME }}
+          TSS_PASSWORD: ${{ secrets.TSS_PASSWORD }}
+          TSS_TOKEN: ${{ secrets.TSS_TOKEN }}
+          TSS_DOMAIN: ${{ vars.TSS_DOMAIN || secrets.TSS_DOMAIN }}
+          TSS_ALLOW_INSECURE_HTTP: ${{ vars.TSS_ALLOW_INSECURE_HTTP || secrets.TSS_ALLOW_INSECURE_HTTP }}
+          TSS_TEST_FOLDER_ID: ${{ secrets.TSS_TEST_FOLDER_ID }}
+          TSS_TEST_SITE_ID: ${{ vars.TSS_TEST_SITE_ID || '1' }}
+          TSS_TEST_TEMPLATE_ID: ${{ vars.TSS_TEST_TEMPLATE_ID || '2' }}
+          TSS_TEST_SSH_TEMPLATE_ID: ${{ vars.TSS_TEST_SSH_TEMPLATE_ID }}
+          TSS_TEST_MIXED_TEMPLATE_ID: ${{ vars.TSS_TEST_MIXED_TEMPLATE_ID }}
+        run: |
+          if [ -n "$TSS_TOKEN" ]; then
+            unset TSS_USERNAME TSS_PASSWORD
+          else
+            unset TSS_TOKEN
+          fi
+          go test ./delinea -run TestAcc -count=1 -v -timeout 25m

@@ -9,25 +9,97 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  GOWORK: 'off'
+
 jobs:
   build-vet-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set up Go
-        uses: actions/setup-go@0aaccfd150d50ccaeb58ebd88d36e91967a5f35b # v5
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: true
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: '1.15.9'
+          terraform_wrapper: false
+      - name: Select Terraform CLI
+        # The fake-server tests drive the provider through the real Terraform
+        # CLI via terraform-plugin-testing; without this it would download one.
+        run: echo "TF_ACC_TERRAFORM_PATH=$(command -v terraform)" >> "$GITHUB_ENV"
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
       - name: Build
         run: go build ./...
       - name: Vet
         run: go vet ./...
-      - name: Test
-        # Unit tests only. Acceptance tests (TestAcc*) self-skip because
-        # TF_ACC is not set; they live in delinea/resource_secret_acceptance_test.go
-        # and require a live tenant — run them manually per that file's docstring.
-        # -count=1 disables the test cache so re-runs always execute the suite
-        # (CI must reflect the current commit, not a cached prior result).
-        run: go test ./... -count=1
+      - name: Test (race)
+        run: go test -race ./... -count=1
+      - name: Examples are valid HCL
+        # Each example directory is a standalone root module. The provider
+        # under test is served through dev_overrides so validation does not
+        # depend on a published registry release.
+        run: |
+          set -euo pipefail
+          terraform fmt -check -recursive examples vars
+          go build -o "$RUNNER_TEMP/tfp/terraform-provider-tss" .
+          cat > "$RUNNER_TEMP/tfp/cli.tfrc" <<EOF
+          provider_installation {
+            dev_overrides {
+              "DelineaXPM/tss" = "$RUNNER_TEMP/tfp"
+            }
+            direct {}
+          }
+          EOF
+          export TF_CLI_CONFIG_FILE="$RUNNER_TEMP/tfp/cli.tfrc"
+          for dir in examples/secrets/*/; do
+            echo "validating $dir"
+            (cd "$dir" && terraform validate -no-color)
+          done
+      - name: Tidy drift
+        run: |
+          go mod tidy
+          (cd tools && go mod tidy)
+          git diff --exit-code -- go.mod go.sum tools/go.mod tools/go.sum
+
+  govulncheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            tools/go.sum
+      - name: Install govulncheck
+        run: cd tools && go install golang.org/x/vuln/cmd/govulncheck
+      - name: Run govulncheck
+        run: '"$(go env GOPATH)/bin/govulncheck" ./...'
+
+  windows-state-permissions:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Verify encrypted-state DACL
+        run: go test ./delinea -run '^TestStateFilesUseProtectedCurrentUserDACL$' -count=1

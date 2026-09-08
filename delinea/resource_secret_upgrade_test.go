@@ -130,7 +130,6 @@ func TestPriorSchemaV0_ServerAssignedFieldsAreOptionalAndComputed(t *testing.T) 
 		attr, ok := attrs[name]
 		if !ok {
 			t.Fatalf("v0 fields.%s: attribute missing", name)
-			continue
 		}
 		if !attr.IsOptional() {
 			t.Errorf("v0 %s: IsOptional() = false, want true", name)

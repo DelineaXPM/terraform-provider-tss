@@ -2,8 +2,8 @@ terraform {
   required_version = ">= 1.11.0"
   required_providers {
     tss = {
-      source = "DelineaXPM/tss"
-      version = "3.0.0"
+      source  = "DelineaXPM/tss"
+      version = ">= 5.0.0"
     }
   }
 }
@@ -31,6 +31,6 @@ provider "tss" {
 }
 
 resource "tss_secret_deletion" "delete_secrets" {
-  for_each = toset(var.tss_secret_ids)
+  for_each  = toset(var.tss_secret_ids)
   secret_id = tonumber(each.key)
 }
