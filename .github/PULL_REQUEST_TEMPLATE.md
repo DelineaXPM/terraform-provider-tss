@@ -7,15 +7,14 @@ about: If you have a pull request to fix a bug or add a feature
 
 Please check if your PR fulfills the following requirements:
 
-- [ ] You have read the contributing guide
-- [ ] Tests for the changes have been added
-- [ ] The documentation has been reviewed and updated as needed
+- [ ] Tests for the changes have been added (`go test ./...` passes)
+- [ ] `docs/` and `CHANGELOG.md` have been reviewed and updated as needed
 
 ## What is the current behavior?
 
-_Please describe the current behavior that you are modifying, and link its a relevant issue_
+_Please describe the current behavior that you are modifying, and link the relevant issue_
 
-Issue Number: _Add the issue number this PR address here._
+Issue Number: _Add the issue number this PR addresses here._
 
 ## What is the new behavior?
 

@@ -14,6 +14,10 @@ import "os"
 // than gated on an empty-env check. Lives in its own file so the fix is
 // independent of the acceptance test file and can land as its own commit.
 func init() {
-	os.Setenv("OTEL_TRACES_EXPORTER", "none")
-	os.Setenv("OTEL_SDK_DISABLED", "true")
+	if err := os.Setenv("OTEL_TRACES_EXPORTER", "none"); err != nil {
+		panic(err)
+	}
+	if err := os.Setenv("OTEL_SDK_DISABLED", "true"); err != nil {
+		panic(err)
+	}
 }

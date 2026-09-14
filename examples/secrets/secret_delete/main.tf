@@ -2,8 +2,8 @@ terraform {
   required_version = ">= 1.11.0"
   required_providers {
     tss = {
-      source = "DelineaXPM/tss"
-      version = "3.0.0"
+      source  = "DelineaXPM/tss"
+      version = ">= 5.0.0"
     }
   }
 }
@@ -30,12 +30,6 @@ provider "tss" {
   server_url = var.tss_server_url
 }
 
-ephemeral "tss_secret" "my_username" {
-  id    = var.tss_secret_id
-  field = "username"
-}
-
-ephemeral "tss_secret" "my_password" {
-  id    = var.tss_secret_id
-  field = "password"
+resource "tss_secret_deletion" "delete_secret" {
+  secret_id = var.tss_secret_id
 }

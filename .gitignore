@@ -30,3 +30,15 @@
 # terraform
 .terraform/
 *.tfstate*
+
+# goreleaser output
+/dist/
+
+# locally built provider binary and wrapper-script lock file
+/terraform-provider-tss
+/terraform-provider-tss_v*
+lockfile.lock
+
+# terraform (continued)
+.terraform.lock.hcl
+crash.log

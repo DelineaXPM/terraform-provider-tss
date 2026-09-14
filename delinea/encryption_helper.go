@@ -6,10 +6,11 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
+	"path/filepath"
 
 	"golang.org/x/crypto/pbkdf2"
 )
@@ -19,24 +20,68 @@ const saltLength = 16
 const keyLength = 32
 const iterations = 100000
 
-func fileExists(filename string) bool {
-	_, err := os.Stat(filename)
-	if os.IsNotExist(err) {
-		return false
+// stateFileMode keeps both the ciphertext and the decrypted state, which
+// contains secret material, readable by the owner only.
+const stateFileMode = 0o600
+
+func writeStateFile(filename string, data []byte) (err error) {
+	dir := filepath.Dir(filename)
+	f, err := os.CreateTemp(dir, "."+filepath.Base(filename)+".tmp-*")
+	if err != nil {
+		return err
 	}
-	return err == nil
+	tempName := f.Name()
+	defer func() {
+		if f != nil {
+			_ = f.Close()
+		}
+		if tempName != "" {
+			_ = os.Remove(tempName)
+		}
+	}()
+	if err = restrictStateFile(tempName, f); err != nil {
+		return err
+	}
+	n, err := f.Write(data)
+	if err != nil {
+		return err
+	}
+	if n != len(data) {
+		return io.ErrShortWrite
+	}
+	if err = f.Sync(); err != nil {
+		return err
+	}
+	if err = f.Close(); err != nil {
+		return err
+	}
+	f = nil
+	if err = os.Rename(tempName, filename); err != nil {
+		return err
+	}
+	tempName = ""
+	return nil
+}
+
+func readStateFile(filename, description string) ([]byte, bool, error) {
+	data, err := os.ReadFile(filename)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to read %s: %w", description, err)
+	}
+	return data, true, nil
 }
 
 // EncryptFile encrypts the file content
 func EncryptFile(passphrase, stateFile string) error {
-	if !fileExists(stateFile) {
-		return nil
-	}
-
-	// Read the input file
-	data, err := os.ReadFile(stateFile)
+	data, exists, err := readStateFile(stateFile, "input file")
 	if err != nil {
-		return fmt.Errorf("failed to read input file: %v", err)
+		return err
+	}
+	if !exists {
+		return nil
 	}
 
 	// Generate a random salt
@@ -71,31 +116,37 @@ func EncryptFile(passphrase, stateFile string) error {
 	finalData := append(salt, encryptedData...)
 
 	// Write the encrypted data to the state file
-	err = os.WriteFile(stateFile, []byte(base64.StdEncoding.EncodeToString(finalData)), 0644)
+	err = writeStateFile(stateFile, []byte(base64.StdEncoding.EncodeToString(finalData)))
 	if err != nil {
 		return fmt.Errorf("failed to write encrypted data to state file: %v", err)
 	}
-
-	log.Printf("[DEBUG] File encrypted successfully: %s\n", stateFile)
+	if err = syncStateDirectory(filepath.Dir(stateFile)); err != nil {
+		return fmt.Errorf("failed to make encrypted state file replacement durable: %w", err)
+	}
 	return nil
 }
 
 // DecryptFile decrypts the content of the state file
 func DecryptFile(passphrase, stateFile string) error {
-	if !fileExists(stateFile) {
-		return nil
-	}
-
-	// Read the encrypted file
-	encryptedBase64Data, err := os.ReadFile(stateFile)
+	encryptedBase64Data, exists, err := readStateFile(stateFile, "encrypted file")
 	if err != nil {
-		return fmt.Errorf("failed to read encrypted file: %v", err)
+		return err
+	}
+	if !exists {
+		if err := writeStateFile(stateFile, nil); err != nil {
+			return fmt.Errorf("failed to create protected state file: %w", err)
+		}
+		return nil
 	}
 
 	// Decode the base64-encoded encrypted data
 	encryptedData, err := base64.StdEncoding.DecodeString(string(encryptedBase64Data))
 	if err != nil {
 		return fmt.Errorf("failed to decode base64 data: %v", err)
+	}
+
+	if len(encryptedData) < saltLength {
+		return fmt.Errorf("encrypted data is too short (%d bytes) to contain the %d-byte salt; the file is not a state file encrypted by this tool", len(encryptedData), saltLength)
 	}
 
 	// Extract the salt and encrypted data
@@ -117,6 +168,9 @@ func DecryptFile(passphrase, stateFile string) error {
 	}
 
 	nonceSize := gcm.NonceSize()
+	if len(encryptedContent) < nonceSize+gcm.Overhead() {
+		return fmt.Errorf("encrypted data is too short (%d bytes) to contain the nonce and authentication tag; the file is truncated or was not encrypted by this tool", len(encryptedContent))
+	}
 	nonce, ciphertext := encryptedContent[:nonceSize], encryptedContent[nonceSize:]
 
 	// Decrypt the data using GCM
@@ -126,11 +180,9 @@ func DecryptFile(passphrase, stateFile string) error {
 	}
 
 	// Write the decrypted data to the state file
-	err = os.WriteFile(stateFile, decryptedData, 0644)
+	err = writeStateFile(stateFile, decryptedData)
 	if err != nil {
 		return fmt.Errorf("failed to write decrypted data to state file: %v", err)
 	}
-
-	log.Printf("[DEBUG] File decrypted successfully: %s\n", stateFile)
 	return nil
 }
