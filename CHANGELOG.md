@@ -6,6 +6,12 @@ For the release history prior to v4.0.0, see the [GitHub Releases](https://githu
 
 ## [Unreleased]
 
+### Security
+
+- Updated the indirect dependency `google.golang.org/grpc` from v1.83.1 to v1.83.2 to fix
+  [GO-2026-6443](https://pkg.go.dev/vuln/GO-2026-6443) (server panic via missing authority or
+  Host headers), reachable through the provider's plugin server.
+
 ## [v5.0.0] - 2026-09-03
 
 This major release migrates to a new SDK major version and includes several
